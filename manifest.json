@@ -1,8 +1,8 @@
 {
   "name": "ICT Trading Signals",
   "short_name": "ICT Signals",
-  "description": "Real-time trading signals using ICT methodology with TradingView charts",
-  "start_url": "/",
+  "description": "Forex, Gold & Crypto trading signals using ICT methodology",
+  "start_url": "/ict-trading-pwa/",
   "display": "standalone",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
