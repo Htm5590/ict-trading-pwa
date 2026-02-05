@@ -42,26 +42,29 @@
   function init() {
     populatePairs();
     loadChart();
-    $cat.addEventListener('change', () => { populatePairs(); loadChart(); });
-    $pair.addEventListener('change', loadChart);
-    $tf.addEventListener('change', loadChart);
+    $cat.addEventListener('change', function() { populatePairs(); loadChart(); });
+    $pair.addEventListener('change', function() { loadChart(); });
+    $tf.addEventListener('change', function() { loadChart(); });
     $btn.addEventListener('click', runAnalysis);
   }
 
   function populatePairs() {
-    const list = PAIRS[$cat.value] || [];
-    $pair.innerHTML = list.map(p =>
-      '<option value="' + p.symbol + '" data-tv="' + p.tv + '">' + p.symbol + '</option>'
-    ).join('');
+    var list = PAIRS[$cat.value] || [];
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      html += '<option value="' + list[i].symbol + '" data-tv="' + list[i].tv + '">' + list[i].symbol + '</option>';
+    }
+    $pair.innerHTML = html;
   }
 
   function getTV() {
-    return $pair.options[$pair.selectedIndex].getAttribute('data-tv');
+    if (!$pair.options || $pair.options.length === 0) return 'FX:EURUSD';
+    return $pair.options[$pair.selectedIndex].getAttribute('data-tv') || 'FX:EURUSD';
   }
 
   // === CHART ===
   function loadChart() {
-    const el = document.getElementById('tv-chart');
+    var el = document.getElementById('tv-chart');
     el.innerHTML = '';
     try {
       new TradingView.widget({
@@ -83,61 +86,48 @@
 
   // === PRICE FETCH ===
   async function fetchPrice(pair) {
-    const cat = $cat.value;
-
-    // Crypto: use public Binance/CoinGecko
-    if (cat === 'crypto') {
-      return fetchCryptoPrice(pair);
-    }
-    // Gold
-    if (cat === 'gold') {
-      return fetchGoldPrice();
-    }
-    // Forex
+    var cat = $cat.value;
+    if (cat === 'crypto') return fetchCryptoPrice(pair);
+    if (cat === 'gold') return fetchGoldPrice();
     return fetchForexPrice(pair);
   }
 
   async function fetchForexPrice(pair) {
-    const [base, quote] = pair.split('/');
+    var parts = pair.split('/');
+    var base = parts[0];
+    var quote = parts[1];
     try {
-      const r = await fetch('https://open.er-api.com/v6/latest/' + base);
-      const d = await r.json();
+      var r = await fetch('https://open.er-api.com/v6/latest/' + base);
+      var d = await r.json();
       if (d.rates && d.rates[quote]) return +d.rates[quote].toFixed(5);
     } catch (e) {}
-    // fallback
     try {
-      const r2 = await fetch('https://open.er-api.com/v6/latest/USD');
-      const d2 = await r2.json();
+      var r2 = await fetch('https://open.er-api.com/v6/latest/USD');
+      var d2 = await r2.json();
       if (!d2.rates) return null;
-      const baseRate = d2.rates[base] || 1;
-      const quoteRate = d2.rates[quote] || 1;
+      var baseRate = d2.rates[base] || 1;
+      var quoteRate = d2.rates[quote] || 1;
       return +(quoteRate / baseRate).toFixed(5);
     } catch (e) { return null; }
   }
 
   async function fetchGoldPrice() {
     try {
-      const r = await fetch('https://api.metalpriceapi.com/v1/latest?api_key=demo&base=XAU&currencies=USD');
-      const d = await r.json();
+      var r = await fetch('https://open.er-api.com/v6/latest/XAU');
+      var d = await r.json();
       if (d.rates && d.rates.USD) return +d.rates.USD.toFixed(2);
-    } catch (e) {}
-    // fallback: estimate from exchange rate
-    try {
-      const r2 = await fetch('https://open.er-api.com/v6/latest/XAU');
-      const d2 = await r2.json();
-      if (d2.rates && d2.rates.USD) return +d2.rates.USD.toFixed(2);
     } catch (e) {}
     return null;
   }
 
   async function fetchCryptoPrice(pair) {
-    const coin = pair.split('/')[0];
-    const map = { BTC: 'bitcoin', ETH: 'ethereum', BNB: 'binancecoin', SOL: 'solana', XRP: 'ripple' };
-    const id = map[coin];
+    var coin = pair.split('/')[0];
+    var map = { BTC: 'bitcoin', ETH: 'ethereum', BNB: 'binancecoin', SOL: 'solana', XRP: 'ripple' };
+    var id = map[coin];
     if (!id) return null;
     try {
-      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + id + '&vs_currencies=usd');
-      const d = await r.json();
+      var r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + id + '&vs_currencies=usd');
+      var d = await r.json();
       if (d[id] && d[id].usd) return +d[id].usd;
     } catch (e) {}
     return null;
@@ -145,28 +135,29 @@
 
   // === CANDLE GENERATION ===
   function buildCandles(pair, price, count) {
-    const p = ict.pip(pair);
-    const isJPY = pair.includes('JPY');
-    const isCrypto = ['BTC/USD','ETH/USD','BNB/USD','SOL/USD','XRP/USD'].includes(pair);
-    const isGold = pair === 'XAU/USD';
+    var isJPY = pair.indexOf('JPY') !== -1;
+    var isCrypto = pair === 'BTC/USD' || pair === 'ETH/USD' || pair === 'BNB/USD' || pair === 'SOL/USD' || pair === 'XRP/USD';
+    var isGold = pair === 'XAU/USD';
 
-    let vol;
+    var vol;
     if (isCrypto) vol = price * 0.003;
     else if (isGold) vol = price * 0.001;
     else if (isJPY) vol = 0.15;
     else vol = 0.0004;
 
-    let px = price * (1 - 0.005);
-    let seed = pair.split('').reduce((a, c) => a + c.charCodeAt(0), 0) + new Date().getHours();
-    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return (seed / 4294967296) - 0.5; };
-    const drift = (price - px) / count;
-    const out = [];
+    var px = price * (1 - 0.005);
+    var seed = 0;
+    for (var x = 0; x < pair.length; x++) seed += pair.charCodeAt(x);
+    seed += new Date().getHours();
+    function rng() { seed = (seed * 1664525 + 1013904223) >>> 0; return (seed / 4294967296) - 0.5; }
+    var drift = (price - px) / count;
+    var out = [];
 
-    for (let i = 0; i < count; i++) {
-      const o = px;
-      const c = px + drift + rng() * vol;
-      const h = Math.max(o, c) + Math.abs(rng() * vol * 0.5);
-      const l = Math.min(o, c) - Math.abs(rng() * vol * 0.5);
+    for (var i = 0; i < count; i++) {
+      var o = px;
+      var c = px + drift + rng() * vol;
+      var h = Math.max(o, c) + Math.abs(rng() * vol * 0.5);
+      var l = Math.min(o, c) - Math.abs(rng() * vol * 0.5);
       out.push({ open: o, high: h, low: l, close: c, time: Date.now() - (count - i) * 60000 });
       px = c;
     }
@@ -175,13 +166,14 @@
 
   // === ANALYSIS ===
   async function runAnalysis() {
-    const pair = $pair.value;
+    var pair = $pair.value;
+    if (!pair) { $signals.innerHTML = '<div class="no-signal">Please select a pair first.</div>'; return; }
     $btn.disabled = true;
     $btn.innerHTML = '<span class="spinner"></span>Analyzing...';
     $signals.innerHTML = '<p class="empty">Fetching price for ' + pair + '...</p>';
 
     try {
-      const price = await fetchPrice(pair);
+      var price = await fetchPrice(pair);
       if (!price) {
         $signals.innerHTML = '<div class="no-signal">Could not fetch price for ' + pair + '. Try again.</div>';
         return;
@@ -190,9 +182,9 @@
       $price.textContent = ict.fmt(price, pair);
       $update.textContent = new Date().toLocaleTimeString();
 
-      const candles = buildCandles(pair, price, 120);
-      const analysis = ict.analyze(candles, pair);
-      const signals = sigGen.generate(analysis, price, pair);
+      var candles = buildCandles(pair, price, 120);
+      var analysis = ict.analyze(candles, pair);
+      var signals = sigGen.generate(analysis, price, pair);
 
       if (!signals || signals.length === 0) {
         $signals.innerHTML = '<div class="no-signal">No valid ICT setup found for ' + pair + ' right now.<br>Try a different timeframe or check back later.</div>';
@@ -210,8 +202,10 @@
   }
 
   function renderSignals(signals) {
-    $signals.innerHTML = signals.map(s => {
-      return '<div class="signal-card">' +
+    var html = '';
+    for (var i = 0; i < signals.length; i++) {
+      var s = signals[i];
+      html += '<div class="signal-card">' +
         '<div class="top">' +
           '<span class="name">' + s.name + '</span>' +
           '<span class="badge ' + s.direction.toLowerCase() + '">' + s.direction + '</span>' +
@@ -223,13 +217,19 @@
         '</div>' +
         '<div class="method">Method: <strong>' + s.method + '</strong> | R:R ' + s.rr + ' | Score ' + s.score + '/100 | ' + s.killzone + '</div>' +
       '</div>';
-    }).join('');
+    }
+    $signals.innerHTML = html;
   }
 
   // === PWA ===
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(function() {});
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  // Init immediately since scripts are at end of body
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
