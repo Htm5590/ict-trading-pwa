@@ -1,7 +1,6 @@
 (() => {
   'use strict';
 
-  // === PAIR LISTS ===
   const PAIRS = {
     forex: [
       { symbol: 'EUR/USD', tv: 'FX:EURUSD' },
@@ -27,18 +26,17 @@
     ]
   };
 
-  const ict = new ICTAnalyzer();
-  const sigGen = new SignalGenerator(ict);
+  var ict = new ICTAnalyzer();
+  var sigGen = new SignalGenerator(ict);
 
-  const $cat = document.getElementById('category');
-  const $pair = document.getElementById('pair');
-  const $tf = document.getElementById('tf');
-  const $btn = document.getElementById('analyze-btn');
-  const $price = document.getElementById('live-price');
-  const $update = document.getElementById('last-update');
-  const $signals = document.getElementById('signals-container');
+  var $cat = document.getElementById('category');
+  var $pair = document.getElementById('pair');
+  var $tf = document.getElementById('tf');
+  var $btn = document.getElementById('analyze-btn');
+  var $price = document.getElementById('live-price');
+  var $update = document.getElementById('last-update');
+  var $signals = document.getElementById('signals-container');
 
-  // === INIT ===
   function init() {
     populatePairs();
     loadChart();
@@ -62,7 +60,6 @@
     return $pair.options[$pair.selectedIndex].getAttribute('data-tv') || 'FX:EURUSD';
   }
 
-  // === CHART ===
   function loadChart() {
     var el = document.getElementById('tv-chart');
     el.innerHTML = '';
@@ -84,7 +81,6 @@
     }
   }
 
-  // === PRICE FETCH ===
   async function fetchPrice(pair) {
     var cat = $cat.value;
     if (cat === 'crypto') return fetchCryptoPrice(pair);
@@ -112,11 +108,30 @@
   }
 
   async function fetchGoldPrice() {
+    // Try CoinGecko for gold price (they track commodities too)
+    // But gold is not on CoinGecko, so use multiple fallbacks
+
+    // Method 1: Use frankfurter.app (ECB rates, may have XAU)
     try {
-      var r = await fetch('https://open.er-api.com/v6/latest/XAU');
-      var d = await r.json();
-      if (d.rates && d.rates.USD) return +d.rates.USD.toFixed(2);
+      var r1 = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
+      var d1 = await r1.json();
+      if (d1.rates && d1.rates.USD) return +d1.rates.USD.toFixed(2);
     } catch (e) {}
+
+    // Method 2: Use open.er-api with USD base and invert XAU
+    try {
+      var r2 = await fetch('https://open.er-api.com/v6/latest/USD');
+      var d2 = await r2.json();
+      if (d2.rates && d2.rates.XAU) return +(1 / d2.rates.XAU).toFixed(2);
+    } catch (e) {}
+
+    // Method 3: Use metals.live free API
+    try {
+      var r3 = await fetch('https://api.metals.live/v1/spot/gold');
+      var d3 = await r3.json();
+      if (Array.isArray(d3) && d3.length > 0 && d3[0].price) return +Number(d3[0].price).toFixed(2);
+    } catch (e) {}
+
     return null;
   }
 
@@ -133,7 +148,6 @@
     return null;
   }
 
-  // === CANDLE GENERATION ===
   function buildCandles(pair, price, count) {
     var isJPY = pair.indexOf('JPY') !== -1;
     var isCrypto = pair === 'BTC/USD' || pair === 'ETH/USD' || pair === 'BNB/USD' || pair === 'SOL/USD' || pair === 'XRP/USD';
@@ -164,7 +178,6 @@
     return out;
   }
 
-  // === ANALYSIS ===
   async function runAnalysis() {
     var pair = $pair.value;
     if (!pair) { $signals.innerHTML = '<div class="no-signal">Please select a pair first.</div>'; return; }
@@ -221,12 +234,10 @@
     $signals.innerHTML = html;
   }
 
-  // === PWA ===
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function() {});
   }
 
-  // Init immediately since scripts are at end of body
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
