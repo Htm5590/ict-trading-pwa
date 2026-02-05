@@ -1,12 +1,12 @@
-const CACHE_NAME = 'ict-signals-v1';
+const CACHE_NAME = 'ict-signals-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/js/app.js',
-  '/js/ict-analyzer.js',
-  '/js/signals.js',
-  '/manifest.json'
+  '/ict-trading-pwa/',
+  '/ict-trading-pwa/index.html',
+  '/ict-trading-pwa/css/style.css',
+  '/ict-trading-pwa/js/app.js',
+  '/ict-trading-pwa/js/ict-analyzer.js',
+  '/ict-trading-pwa/js/signals.js',
+  '/ict-trading-pwa/manifest.json'
 ];
 
 self.addEventListener('install', e => {
@@ -26,25 +26,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('api.') || e.request.url.includes('tradingview')) {
-    e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
-    );
-    return;
-  }
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request).catch(() => caches.match(e.request))
   );
-});
-
-self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'SIGNAL_NOTIFICATION') {
-    self.registration.showNotification('ICT Trading Signal', {
-      body: e.data.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      vibrate: [200, 100, 200],
-      data: e.data
-    });
-  }
 });
