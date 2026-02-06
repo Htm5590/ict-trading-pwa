@@ -12,7 +12,8 @@
             { symbol: 'NZD/USD', tv: 'FX:NZDUSD' },
             { symbol: 'EUR/GBP', tv: 'FX:EURGBP' },
             { symbol: 'EUR/JPY', tv: 'FX:EURJPY' },
-            { symbol: 'GBP/JPY', tv: 'FX:GBPJPY' }
+            { symbol: 'GBP/JPY', tv: 'FX:GBPJPY' },
+            { symbol: 'XAU/USD', tv: 'TVC:GOLD' }
         ],
         indices: [
             { symbol: 'US30', tv: 'CAPITALCOM:US30' },
@@ -93,20 +94,6 @@
         container.innerHTML = '<div class="signal-placeholder">Select a pair and click <strong>Analyze</strong> to generate ICT signals</div>';
     }
 
-    async function fetchCandles(symbol) {
-        const tvSymbol = symbol.tv.replace(':', '_');
-        const url = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(
-            'https://scanner.tradingview.com/symbol?symbol=' + symbol.tv + '&fields=close,open,high,low,volume&no_404=true'
-        );
-        try {
-            const resp = await fetch(url);
-            if (!resp.ok) throw new Error('API error');
-            return null;
-        } catch (e) {
-            return null;
-        }
-    }
-
     function generateMockCandles(price) {
         const candles = [];
         let p = price || 1.1000;
@@ -124,12 +111,25 @@
 
     function getBasePrice(symbol) {
         const prices = {
-            'EUR/USD': 1.1050, 'GBP/USD': 1.2700, 'USD/JPY': 149.50,
-            'USD/CHF': 0.8800, 'AUD/USD': 0.6550, 'USD/CAD': 1.3600,
-            'NZD/USD': 0.5900, 'EUR/GBP': 0.8700, 'EUR/JPY': 163.00,
-            'GBP/JPY': 189.50, 'US30': 44500, 'US100': 21500,
-            'US500': 6100, 'DAX': 21000, 'FTSE 100': 8700,
-            'BTC/USD': 98000, 'ETH/USD': 2700, 'XRP/USD': 2.40
+            'EUR/USD': 1.1780,
+            'GBP/USD': 1.3540,
+            'USD/JPY': 156.55,
+            'USD/CHF': 0.7760,
+            'AUD/USD': 0.6950,
+            'USD/CAD': 1.3710,
+            'NZD/USD': 0.5990,
+            'EUR/GBP': 0.8690,
+            'EUR/JPY': 184.50,
+            'GBP/JPY': 212.00,
+            'XAU/USD': 4870.00,
+            'US30': 48900,
+            'US100': 24800,
+            'US500': 6800,
+            'DAX': 24600,
+            'FTSE 100': 10320,
+            'BTC/USD': 63000,
+            'ETH/USD': 1880,
+            'XRP/USD': 1.25
         };
         return prices[symbol] || 1.0;
     }
@@ -139,14 +139,13 @@
         const container = document.getElementById('signals-container');
         btn.disabled = true;
         btn.textContent = 'Analyzing...';
-        container.innerHTML = '<div class="signal-loading"><div class="spinner"></div><p>Analyzing ' + currentSymbol.symbol + ' with ICT methodology...</p></div>';
+        container.innerHTML = '<div class="signal-loading"><div class="spinner"></div><span>Analyzing ' + currentSymbol.symbol + ' with ICT methodology...</span></div>';
 
         await new Promise(r => setTimeout(r, 800));
 
         const basePrice = getBasePrice(currentSymbol.symbol);
         const candles = generateMockCandles(basePrice);
         const result = ict.generateSignal(currentSymbol.symbol, candles);
-
         renderSignal(result);
         btn.disabled = false;
         btn.textContent = 'Analyze';
@@ -162,10 +161,10 @@
                         <span class="signal-badge neutral">NO SIGNAL</span>
                     </div>
                     <div class="signal-card-body">
-                        <div class="signal-row"><span>Price</span><span>${result.currentPrice}</span></div>
-                        <div class="signal-row"><span>Structure</span><span>${result.structure}</span></div>
-                        <div class="signal-row"><span>FVGs Found</span><span>${result.fvgCount || 0}</span></div>
-                        <div class="signal-row"><span>OBs Found</span><span>${result.obCount || 0}</span></div>
+                        <div class="signal-row"><span>Price</span><span class="value">${result.currentPrice}</span></div>
+                        <div class="signal-row"><span>Structure</span><span class="value">${result.structure}</span></div>
+                        <div class="signal-row"><span>FVGs Found</span><span class="value">${result.fvgCount || 0}</span></div>
+                        <div class="signal-row"><span>OBs Found</span><span class="value">${result.obCount || 0}</span></div>
                     </div>
                     <div class="signal-reason">${result.reason}</div>
                 </div>`;
@@ -179,13 +178,13 @@
                     <span class="signal-badge ${isBuy ? 'buy' : 'sell'}">${result.signal}</span>
                 </div>
                 <div class="signal-card-body">
-                    <div class="signal-row"><span>Current Price</span><span>${result.currentPrice}</span></div>
+                    <div class="signal-row"><span>Current Price</span><span class="value">${result.currentPrice}</span></div>
                     <div class="signal-row entry"><span>→ Entry</span><span class="value">${result.entry}</span></div>
                     <div class="signal-row tp"><span>↑ Take Profit</span><span class="value">${result.tp}</span></div>
                     <div class="signal-row sl"><span>↓ Stop Loss</span><span class="value">${result.sl}</span></div>
-                    <div class="signal-row"><span>Risk/Reward</span><span>${result.riskReward}</span></div>
-                    <div class="signal-row"><span>Structure</span><span>${result.structure}</span></div>
-                    <div class="signal-row"><span>FVGs / OBs</span><span>${result.fvgCount || 0} / ${result.obCount || 0}</span></div>
+                    <div class="signal-row"><span>Risk/Reward</span><span class="value">${result.riskReward}</span></div>
+                    <div class="signal-row"><span>Structure</span><span class="value">${result.structure}</span></div>
+                    <div class="signal-row"><span>FVGs / OBs</span><span class="value">${result.fvgCount || 0} / ${result.obCount || 0}</span></div>
                 </div>
                 <div class="signal-reason">${result.reason}</div>
                 <div class="signal-disclaimer">⚠️ Educational only. Not financial advice.</div>
