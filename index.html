@@ -1,69 +1,84 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0d1117">
-  <meta name="description" content="ICT Trading Signals - Forex, Gold & Crypto">
-  <link rel="manifest" href="manifest.json">
-  <title>ICT Trading Signals</title>
-  <link rel="stylesheet" href="css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="description" content="ICT Trading Signals - Forex, Gold & Crypto Analysis">
+    <link rel="manifest" href="manifest.json">
+    <title>ICT Trading Signals</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>ICT Trading Signals</h1>
-      <p class="sub">Select a pair and click Analyze</p>
-    </header>
+    <div class="app">
+        <header>
+            <h1>📈 ICT Trading Signals</h1>
+            <p class="sub">Select a pair and analyze using ICT methodology</p>
+        </header>
 
-    <div class="controls">
-      <div class="field">
-        <label for="category">Category</label>
-        <select id="category">
-          <option value="forex">Forex</option>
-          <option value="gold">Gold</option>
-          <option value="crypto">Crypto</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="pair">Pair / Symbol</label>
-        <select id="pair"></select>
-      </div>
-      <div class="field">
-        <label for="tf">Timeframe</label>
-        <select id="tf">
-          <option value="5">5 min</option>
-          <option value="15" selected>15 min</option>
-          <option value="60">1 Hour</option>
-          <option value="240">4 Hours</option>
-          <option value="D">Daily</option>
-        </select>
-      </div>
-      <button id="analyze-btn">Analyze</button>
+        <main>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="category">Category</label>
+                    <select id="category">
+                        <option value="forex">Forex</option>
+                        <option value="gold">Gold</option>
+                        <option value="crypto">Crypto</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="pair">Pair</label>
+                    <select id="pair">
+                        <option value="">Select Pair</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="tf">Timeframe</label>
+                    <select id="tf">
+                        <option value="15">15 Min</option>
+                        <option value="1H">1 Hour</option>
+                        <option value="4H">4 Hours</option>
+                        <option value="1D">Daily</option>
+                    </select>
+                </div>
+
+                <button id="analyze-btn" class="analyze-btn">Analyze</button>
+            </div>
+
+            <div class="price-display">
+                <div class="price-label">Live Price:</div>
+                <div id="live-price" class="price-value">--</div>
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Analyzing market structure...</p>
+            </div>
+
+            <div id="results" class="results" style="display: none;">
+                <h2>Analysis Results</h2>
+                <div id="signal-cards" class="signal-cards"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>ICT Methodology: Order Blocks, Fair Value Gaps, Liquidity Zones</p>
+            <p class="disclaimer">⚠️ For educational purposes only. Not financial advice.</p>
+        </footer>
     </div>
 
-    <div class="info-bar">
-      <span>Price: <strong id="live-price">--</strong></span>
-      <span>Updated: <strong id="last-update">--</strong></span>
-    </div>
-
-    <div id="tv-chart" class="chart-box"></div>
-
-    <div id="results" class="results">
-      <h2>Signals</h2>
-      <div id="signals-container">
-        <p class="empty">No analysis yet. Select a pair and click Analyze.</p>
-      </div>
-    </div>
-
-    <footer>
-      <p>For educational purposes only. Trading involves risk.</p>
-    </footer>
-  </div>
-
-  <script src="https://s3.tradingview.com/tv.js"></script>
-  <script src="js/ict-analyzer.js"></script>
-  <script src="js/signals.js"></script>
-  <script src="js/app.js"></script>
+    <script src="js/ict-analyzer.js"></script>
+    <script src="js/signals.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('SW registered', reg))
+                .catch(err => console.warn('SW error', err));
+        }
+    </script>
 </body>
 </html>
