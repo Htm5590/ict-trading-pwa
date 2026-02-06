@@ -4,31 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0d1117">
-    <meta name="description" content="ICT Trading PWA - Real-time TradingView Charts">
+    <meta name="description" content="ICT Trading Signals - Forex, Indices & Crypto with Entry/TP/SL">
     <link rel="manifest" href="manifest.json">
-    <title>ICT Trading PWA</title>
+    <title>ICT Trading Signals</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="sidebar-overlay"></div>
-    
+
     <aside class="sidebar">
         <div class="sidebar-header">
             <h2>📈 ICT Trading</h2>
         </div>
-        
+
         <div class="categories">
             <button class="category-btn active" data-category="forex">Forex</button>
             <button class="category-btn" data-category="indices">Indices</button>
             <button class="category-btn" data-category="crypto">Crypto</button>
         </div>
-        
+
         <div class="pairs-section">
             <h3>Select Pair</h3>
             <div id="pairs-list" class="pairs-list"></div>
         </div>
     </aside>
-    
+
     <main class="main-content">
         <header class="top-bar">
             <button class="hamburger">
@@ -36,15 +36,26 @@
                 <span></span>
                 <span></span>
             </button>
-            <h1>ICT Trading PWA</h1>
+            <h1>ICT Trading Signals</h1>
         </header>
-        
+
         <div class="chart-container">
             <div id="tradingview_chart"></div>
         </div>
+
+        <div class="signals-panel">
+            <div class="signals-header">
+                <h2>🎯 ICT Signals</h2>
+                <button id="analyze-btn" class="analyze-btn">Analyze</button>
+            </div>
+            <div id="signals-container" class="signals-container">
+                <div class="signal-placeholder">Select a pair and click <strong>Analyze</strong> to generate ICT signals</div>
+            </div>
+        </div>
     </main>
-    
+
     <script src="https://s3.tradingview.com/tv.js"></script>
+    <script src="js/ict-analyzer.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
