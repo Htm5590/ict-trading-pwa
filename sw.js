@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ict-trading-v5';
+const CACHE_NAME = 'ict-trading-v6';
 const ASSETS = [
   '/ict-trading-pwa/',
   '/ict-trading-pwa/index.html',
