@@ -52,6 +52,11 @@
                 <div id="live-price" class="price-value">--</div>
             </div>
 
+            <!-- TradingView Chart Widget -->
+            <div id="tradingview-widget" class="tradingview-widget" style="display: none;">
+                <div id="tradingview_chart"></div>
+            </div>
+
             <div id="loading" class="loading" style="display: none;">
                 <div class="spinner"></div>
                 <p>Analyzing market structure...</p>
@@ -69,6 +74,8 @@
         </footer>
     </div>
 
+    <!-- TradingView Widget Script -->
+    <script src="https://s3.tradingview.com/tv.js"></script>
     <script src="js/ict-analyzer.js"></script>
     <script src="js/signals.js"></script>
     <script src="js/app.js"></script>
