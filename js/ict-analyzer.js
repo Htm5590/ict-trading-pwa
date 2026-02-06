@@ -1,6 +1,7 @@
 /**
  * ICT (Inner Circle Trader) Methodology Analyzer
  * Supports: Forex, Gold (XAU/USD), Crypto
+ * Real-time price analysis with ICT concepts
  */
 class ICTAnalyzer {
   constructor() {
@@ -14,13 +15,18 @@ class ICTAnalyzer {
   }
 
   pip(pair) { return this.pipSize[pair] || 0.0001; }
+  
   decimals(pair) {
     const p = this.pip(pair);
     if (p >= 1) return 0;
     return Math.abs(Math.floor(Math.log10(p)));
   }
-  fmt(price, pair) { return Number(price).toFixed(this.decimals(pair)); }
+  
+  fmt(price, pair) {
+    return Number(price).toFixed(this.decimals(pair));
+  }
 
+  // Find swing highs and lows
   findSwings(candles, left = 5, right = 5) {
     const highs = [], lows = [];
     for (let i = left; i < candles.length - right; i++) {
@@ -36,118 +42,210 @@ class ICTAnalyzer {
     return { highs, lows };
   }
 
-  marketStructure(candles) {
-    const { highs, lows } = this.findSwings(candles, 3, 3);
-    if (highs.length < 2 || lows.length < 2) return { trend: 'neutral', bos: null, choch: null };
-    const lastH = highs.slice(-2);
-    const lastL = lows.slice(-2);
-    let trend = 'neutral', bos = null, choch = null;
-    if (lastH[1].price > lastH[0].price && lastL[1].price > lastL[0].price) trend = 'bullish';
-    else if (lastH[1].price < lastH[0].price && lastL[1].price < lastL[0].price) trend = 'bearish';
-    const last = candles[candles.length - 1];
-    if (trend === 'bullish' && last.close > lastH[0].price) bos = { type: 'bullish', level: lastH[0].price };
-    if (trend === 'bearish' && last.close < lastL[0].price) bos = { type: 'bearish', level: lastL[0].price };
-    if (trend === 'bullish' && last.close < lastL[0].price) choch = { type: 'bearish', level: lastL[0].price };
-    if (trend === 'bearish' && last.close > lastH[0].price) choch = { type: 'bullish', level: lastH[0].price };
-    return { trend, bos, choch, swingHighs: highs, swingLows: lows };
+  // Identify Fair Value Gaps (FVG)
+  findFVG(candles) {
+    const fvgs = [];
+    for (let i = 2; i < candles.length; i++) {
+      const prev = candles[i-2], curr = candles[i];
+      // Bullish FVG: gap between prev high and curr low
+      if (curr.low > prev.high) {
+        fvgs.push({
+          type: 'bullish',
+          top: curr.low,
+          bottom: prev.high,
+          index: i,
+          time: candles[i].time
+        });
+      }
+      // Bearish FVG: gap between prev low and curr high
+      if (curr.high < prev.low) {
+        fvgs.push({
+          type: 'bearish',
+          top: prev.low,
+          bottom: curr.high,
+          index: i,
+          time: candles[i].time
+        });
+      }
+    }
+    return fvgs;
   }
 
+  // Order Blocks - last opposing candle before strong move
   findOrderBlocks(candles) {
     const obs = [];
-    const avgRange = candles.reduce((s, c) => s + Math.abs(c.high - c.low), 0) / candles.length;
-    for (let i = 1; i < candles.length - 1; i++) {
-      const curr = candles[i + 1];
-      const prev = candles[i];
-      const body = Math.abs(curr.close - curr.open);
-      const range = curr.high - curr.low;
-      if (range > avgRange * 1.5 && body / range > 0.6) {
-        if (curr.close > curr.open && prev.close < prev.open) {
-          obs.push({ type: 'bullish', top: prev.open, bottom: prev.close, index: i, candle: prev });
-        } else if (curr.close < curr.open && prev.close > prev.open) {
-          obs.push({ type: 'bearish', top: prev.close, bottom: prev.open, index: i, candle: prev });
-        }
+    for (let i = 3; i < candles.length; i++) {
+      const c1 = candles[i-3], c2 = candles[i-2], c3 = candles[i-1], c4 = candles[i];
+      const bullishMove = c4.close > c2.close && (c4.close - c2.close) > (c2.high - c2.low) * 2;
+      const bearishMove = c4.close < c2.close && (c2.close - c4.close) > (c2.high - c2.low) * 2;
+      
+      if (bullishMove && c3.close < c3.open) {
+        obs.push({
+          type: 'bullish',
+          high: c3.high,
+          low: c3.low,
+          index: i-1,
+          time: c3.time
+        });
+      }
+      if (bearishMove && c3.close > c3.open) {
+        obs.push({
+          type: 'bearish',
+          high: c3.high,
+          low: c3.low,
+          index: i-1,
+          time: c3.time
+        });
       }
     }
     return obs;
   }
 
-  findFVG(candles) {
-    const gaps = [];
-    for (let i = 2; i < candles.length; i++) {
-      const c1 = candles[i - 2], c3 = candles[i];
-      if (c3.low > c1.high) {
-        gaps.push({ type: 'bullish', top: c3.low, bottom: c1.high, index: i });
-      } else if (c3.high < c1.low) {
-        gaps.push({ type: 'bearish', top: c1.low, bottom: c3.high, index: i });
-      }
+  // Liquidity zones (areas where stops accumulate)
+  findLiquidityZones(candles, swings) {
+    const zones = [];
+    // Swing highs = sell-side liquidity
+    swings.highs.slice(-5).forEach(sh => {
+      zones.push({
+        type: 'sell-side',
+        price: sh.price,
+        index: sh.index,
+        time: sh.time
+      });
+    });
+    // Swing lows = buy-side liquidity
+    swings.lows.slice(-5).forEach(sl => {
+      zones.push({
+        type: 'buy-side',
+        price: sl.price,
+        index: sl.index,
+        time: sl.time
+      });
+    });
+    return zones;
+  }
+
+  // Market structure: higher highs, higher lows (bullish) or lower highs, lower lows (bearish)
+  determineMarketStructure(swings) {
+    const { highs, lows } = swings;
+    if (highs.length < 2 || lows.length < 2) return 'ranging';
+    
+    const recentHighs = highs.slice(-3);
+    const recentLows = lows.slice(-3);
+    
+    let highsRising = true, lowsRising = true;
+    let highsFalling = true, lowsFalling = true;
+    
+    for (let i = 1; i < recentHighs.length; i++) {
+      if (recentHighs[i].price <= recentHighs[i-1].price) highsRising = false;
+      if (recentHighs[i].price >= recentHighs[i-1].price) highsFalling = false;
     }
-    return gaps;
-  }
-
-  findLiquiditySweeps(candles) {
-    const sweeps = [];
-    const { highs, lows } = this.findSwings(candles, 3, 3);
-    const last = candles[candles.length - 1];
-    const prev = candles[candles.length - 2];
-    for (const sh of highs) {
-      if (prev.high > sh.price && last.close < sh.price) {
-        sweeps.push({ type: 'sell', level: sh.price, index: candles.length - 1 });
-      }
+    for (let i = 1; i < recentLows.length; i++) {
+      if (recentLows[i].price <= recentLows[i-1].price) lowsRising = false;
+      if (recentLows[i].price >= recentLows[i-1].price) lowsFalling = false;
     }
-    for (const sl of lows) {
-      if (prev.low < sl.price && last.close > sl.price) {
-        sweeps.push({ type: 'buy', level: sl.price, index: candles.length - 1 });
-      }
+    
+    if (highsRising && lowsRising) return 'bullish';
+    if (highsFalling && lowsFalling) return 'bearish';
+    return 'ranging';
+  }
+
+  // Generate trading signals based on ICT concepts
+  generateSignal(pair, candles) {
+    if (candles.length < 20) {
+      return { error: 'Not enough data' };
     }
-    return sweeps;
-  }
 
-  isDisplacement(candle, avgRange) {
-    const body = Math.abs(candle.close - candle.open);
-    const range = candle.high - candle.low;
-    return range > avgRange * 2 && body / range > 0.7;
-  }
-
-  findOTE(candles, trend) {
-    const { highs, lows } = this.findSwings(candles, 3, 3);
-    if (highs.length < 1 || lows.length < 1) return null;
-    const lastHigh = highs[highs.length - 1].price;
-    const lastLow = lows[lows.length - 1].price;
-    const range = lastHigh - lastLow;
-    const price = candles[candles.length - 1].close;
-    if (trend === 'bullish') {
-      const oteTop = lastHigh - range * 0.62;
-      const oteBot = lastHigh - range * 0.79;
-      const sweet = lastHigh - range * 0.705;
-      if (price >= oteBot && price <= oteTop) return { entry: sweet, sl: lastLow, tp: lastHigh + range * 0.5, zone: [oteBot, oteTop] };
-    } else if (trend === 'bearish') {
-      const oteTop = lastLow + range * 0.79;
-      const oteBot = lastLow + range * 0.62;
-      const sweet = lastLow + range * 0.705;
-      if (price >= oteBot && price <= oteTop) return { entry: sweet, sl: lastHigh, tp: lastLow - range * 0.5, zone: [oteBot, oteTop] };
-    }
-    return null;
-  }
-
-  getKillzone() {
-    const h = new Date().getUTCHours();
-    if (h >= 0 && h < 8) return 'Asian Session';
-    if (h >= 7 && h < 10) return 'London Open';
-    if (h >= 12 && h < 16) return 'New York Open';
-    if (h >= 15 && h < 17) return 'London Close';
-    return 'Off Session';
-  }
-
-  analyze(candles, pair) {
-    const ms = this.marketStructure(candles);
+    const current = candles[candles.length - 1];
+    const swings = this.findSwings(candles);
+    const fvgs = this.findFVG(candles);
     const obs = this.findOrderBlocks(candles);
-    const fvg = this.findFVG(candles);
-    const sweeps = this.findLiquiditySweeps(candles);
-    const avgRange = candles.reduce((s, c) => s + (c.high - c.low), 0) / candles.length;
-    const lastCandle = candles[candles.length - 1];
-    const displacement = this.isDisplacement(lastCandle, avgRange);
-    const ote = this.findOTE(candles, ms.trend);
-    const killzone = this.getKillzone();
-    return { ms, obs, fvg, sweeps, displacement, ote, killzone, avgRange, pair };
+    const liqZones = this.findLiquidityZones(candles, swings);
+    const structure = this.determineMarketStructure(swings);
+
+    // Recent FVGs and OBs
+    const recentFVG = fvgs.slice(-3);
+    const recentOB = obs.slice(-3);
+
+    let signal = null;
+    let entry = null, sl = null, tp = null;
+    let reason = [];
+
+    // BULLISH SETUP
+    if (structure === 'bullish' && recentFVG.some(f => f.type === 'bullish') && recentOB.some(o => o.type === 'bullish')) {
+      const bullishOB = recentOB.filter(o => o.type === 'bullish').pop();
+      const bullishFVG = recentFVG.filter(f => f.type === 'bullish').pop();
+      
+      // Entry: at the OB low or FVG bottom
+      entry = Math.min(bullishOB.low, bullishFVG.bottom);
+      // Stop loss: below OB
+      sl = bullishOB.low - (50 * this.pip(pair));
+      // Take profit: recent swing high or 2:1 RR
+      const rr = entry - sl;
+      tp = entry + (rr * 2);
+      
+      signal = 'BUY';
+      reason.push('Bullish market structure');
+      reason.push('Bullish order block identified');
+      reason.push('Bullish FVG present');
+    }
+    
+    // BEARISH SETUP
+    else if (structure === 'bearish' && recentFVG.some(f => f.type === 'bearish') && recentOB.some(o => o.type === 'bearish')) {
+      const bearishOB = recentOB.filter(o => o.type === 'bearish').pop();
+      const bearishFVG = recentFVG.filter(f => f.type === 'bearish').pop();
+      
+      // Entry: at the OB high or FVG top
+      entry = Math.max(bearishOB.high, bearishFVG.top);
+      // Stop loss: above OB
+      sl = bearishOB.high + (50 * this.pip(pair));
+      // Take profit: recent swing low or 2:1 RR
+      const rr = sl - entry;
+      tp = entry - (rr * 2);
+      
+      signal = 'SELL';
+      reason.push('Bearish market structure');
+      reason.push('Bearish order block identified');
+      reason.push('Bearish FVG present');
+    }
+
+    if (signal) {
+      return {
+        pair: pair,
+        signal: signal,
+        entry: this.fmt(entry, pair),
+        sl: this.fmt(sl, pair),
+        tp: this.fmt(tp, pair),
+        currentPrice: this.fmt(current.close, pair),
+        structure: structure,
+        reason: reason.join(', '),
+        fvgCount: recentFVG.length,
+        obCount: recentOB.length,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      pair: pair,
+      signal: 'NO SIGNAL',
+      currentPrice: this.fmt(current.close, pair),
+      structure: structure,
+      reason: 'No clear setup matching ICT criteria',
+      timestamp: new Date().toISOString()
+    };
   }
+
+  // Analyze multiple timeframes
+  analyzeMultiTimeframe(pair, data) {
+    const results = {};
+    for (const [tf, candles] of Object.entries(data)) {
+      results[tf] = this.generateSignal(pair, candles);
+    }
+    return results;
+  }
+}
+
+// Export for use in other modules
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = ICTAnalyzer;
 }
