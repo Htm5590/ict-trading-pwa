@@ -4,88 +4,47 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0d1117">
-    <meta name="description" content="ICT Trading Signals - Forex, Gold & Crypto Analysis">
+    <meta name="description" content="ICT Trading PWA - Real-time TradingView Charts">
     <link rel="manifest" href="manifest.json">
-    <title>ICT Trading Signals</title>
+    <title>ICT Trading PWA</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="app">
-        <header>
-            <h1>📈 ICT Trading Signals</h1>
-            <p class="sub">Select a pair and analyze using ICT methodology</p>
+    <div class="sidebar-overlay"></div>
+    
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>📈 ICT Trading</h2>
+        </div>
+        
+        <div class="categories">
+            <button class="category-btn active" data-category="forex">Forex</button>
+            <button class="category-btn" data-category="indices">Indices</button>
+            <button class="category-btn" data-category="crypto">Crypto</button>
+        </div>
+        
+        <div class="pairs-section">
+            <h3>Select Pair</h3>
+            <div id="pairs-list" class="pairs-list"></div>
+        </div>
+    </aside>
+    
+    <main class="main-content">
+        <header class="top-bar">
+            <button class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <h1>ICT Trading PWA</h1>
         </header>
-
-        <main>
-            <div class="controls">
-                <div class="control-group">
-                    <label for="category">Category</label>
-                    <select id="category">
-                        <option value="forex">Forex</option>
-                        <option value="gold">Gold</option>
-                        <option value="crypto">Crypto</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label for="pair">Pair</label>
-                    <select id="pair">
-                        <option value="">Select Pair</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label for="tf">Timeframe</label>
-                    <select id="tf">
-                        <option value="15">15 Min</option>
-                        <option value="1H">1 Hour</option>
-                        <option value="4H">4 Hours</option>
-                        <option value="1D">Daily</option>
-                    </select>
-                </div>
-
-                <button id="analyze-btn" class="analyze-btn">Analyze</button>
-            </div>
-
-            <div class="price-display">
-                <div class="price-label">Live Price:</div>
-                <div id="live-price" class="price-value">--</div>
-            </div>
-
-            <!-- TradingView Chart Widget -->
-            <div id="tradingview-widget" class="tradingview-widget" style="display: none;">
-                <div id="tradingview_chart"></div>
-            </div>
-
-            <div id="loading" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Analyzing market structure...</p>
-            </div>
-
-            <div id="results" class="results" style="display: none;">
-                <h2>Analysis Results</h2>
-                <div id="signal-cards" class="signal-cards"></div>
-            </div>
-        </main>
-
-        <footer>
-            <p>ICT Methodology: Order Blocks, Fair Value Gaps, Liquidity Zones</p>
-            <p class="disclaimer">⚠️ For educational purposes only. Not financial advice.</p>
-        </footer>
-    </div>
-
-    <!-- TradingView Widget Script -->
+        
+        <div class="chart-container">
+            <div id="tradingview_chart"></div>
+        </div>
+    </main>
+    
     <script src="https://s3.tradingview.com/tv.js"></script>
-    <script src="js/ict-analyzer.js"></script>
-    <script src="js/signals.js"></script>
     <script src="js/app.js"></script>
-    <script>
-        // Register service worker
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SW registered', reg))
-                .catch(err => console.warn('SW error', err));
-        }
-    </script>
 </body>
 </html>
