@@ -44,7 +44,7 @@
             theme: 'dark',
             style: '1',
             locale: 'en',
-            toolbar_bg: '#f1f3f6',
+            toolbar_bg: '#161b22',
             enable_publishing: false,
             allow_symbol_change: false,
             container_id: 'tradingview_chart',
@@ -92,15 +92,19 @@
         const sidebar = document.querySelector('.sidebar');
         const overlay = document.querySelector('.sidebar-overlay');
 
-        hamburger.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        });
+        if (hamburger) {
+            hamburger.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                overlay.classList.toggle('active');
+            });
+        }
 
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('active');
-            overlay.classList.remove('active');
-        });
+        if (overlay) {
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+            });
+        }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -110,7 +114,7 @@
         createWidget(currentSymbol);
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js')
+            navigator.serviceWorker.register('/ict-trading-pwa/sw.js')
                 .then(reg => console.log('Service Worker registered', reg))
                 .catch(err => console.log('Service Worker registration failed', err));
         }
