@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="description" content="ICT Trading Signals History">
+    <link rel="manifest" href="manifest.json">
+    <title>Signal History - ICT Trading</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="sidebar-overlay"></div>
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>📈 ICT Trading</h2>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="index.html" class="nav-link">🎯 Signals</a>
+            <a href="history.html" class="nav-link active">📜 History</a>
+        </nav>
+        <div class="history-stats">
+            <h3>Statistics</h3>
+            <div id="stats-container">
+                <div class="stat-item"><span>Total Signals</span><span id="stat-total">0</span></div>
+                <div class="stat-item"><span>TP Hit ✅</span><span id="stat-tp">0</span></div>
+                <div class="stat-item"><span>SL Hit ❌</span><span id="stat-sl">0</span></div>
+                <div class="stat-item"><span>Pending ⏳</span><span id="stat-pending">0</span></div>
+                <div class="stat-item win-rate"><span>Win Rate</span><span id="stat-winrate">-</span></div>
+            </div>
+        </div>
+    </aside>
+    <main class="main-content history-page">
+        <header class="top-bar">
+            <button class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <h1>📜 Signal History</h1>
+            <button id="clear-history-btn" class="clear-btn">🗑️ Clear All</button>
+        </header>
+        <div class="history-filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="pending">Pending</button>
+            <button class="filter-btn" data-filter="tp">TP Hit</button>
+            <button class="filter-btn" data-filter="sl">SL Hit</button>
+        </div>
+        <div id="history-container" class="history-container">
+            <div class="history-placeholder">No signals in history yet. Generate signals from the main page!</div>
+        </div>
+    </main>
+    <script src="js/history.js"></script>
+</body>
+</html>
