@@ -23,54 +23,9 @@ crypto:[
 let currentCategory='forex';
 let currentSymbol=PAIRS.forex[0];
 let widget=null;
-const ict=new ICTAnalyzer();
-
-// Fetch candle data from Binance (for crypto pairs)
-async function fetchBinanceCandles(symbol, interval='15m', limit=100) {
-try {
-const r=await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
-const data=await r.json();
-return data.map(k=>({
-open:parseFloat(k[1]),
-high:parseFloat(k[2]),
-low:parseFloat(k[3]),
-close:parseFloat(k[4]),
-time:k[0]
-}));
-} catch(e) { console.log('Binance candles error',e); return null; }
-}
-
-// Fetch live price
-async function fetchLivePrice(pair) {
-if(pair.binance) {
-try {
-const r=await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pair.binance}`);
-const d=await r.json();
-return {price:parseFloat(d.price),live:true};
-} catch(e) { console.log('Binance error',e); }
-}
-if(currentCategory==='forex') {
-try {
-const parts=pair.symbol.split('/');
-const r=await fetch(`https://open.er-api.com/v6/latest/${parts[0]}`);
-const d=await r.json();
-if(d.rates&&d.rates[parts[1]]) return {price:d.rates[parts[1]],live:true};
-} catch(e) { console.log('Forex API error',e); }
-}
-return {price:null,live:false};
-}
-
-// Fetch candle data - tries Binance first, then generates synthetic
-async function fetchCandles(pair) {
-if(pair.binance) {
-const candles=await fetchBinanceCandles(pair.binance);
-if(candles && candles.length>0) return candles;
-}
-return null; // Will use synthetic candles from analyzer
-}
 
 function formatPrice(p,sym) {
-if(!p) return '--';
+if(!p&&p!==0) return '--';
 if(sym.includes('JPY')) return p.toFixed(3);
 if(sym==='XAU/USD') return p.toFixed(2);
 if(sym.includes('BTC')) return p.toFixed(1);
@@ -80,7 +35,9 @@ return p.toFixed(5);
 
 function createWidget(sym) {
 const c=document.getElementById('tradingview_chart');
+if(!c) return;
 c.innerHTML='';
+try {
 widget=new TradingView.widget({
 autosize:true,symbol:sym.tv,interval:'15',timezone:'exchange',
 theme:'dark',style:'1',locale:'en',toolbar_bg:'#111827',
@@ -88,6 +45,7 @@ enable_publishing:false,allow_symbol_change:false,
 container_id:'tradingview_chart',
 studies:['MASimple@tv-basicstudies','RSI@tv-basicstudies']
 });
+} catch(e) { console.log('TradingView error',e); }
 }
 
 function setupCategories() {
@@ -106,6 +64,7 @@ clearSignals();
 
 function updatePairsList() {
 const list=document.getElementById('pairs-list');
+if(!list) return;
 list.innerHTML='';
 PAIRS[currentCategory].forEach((pair,i)=>{
 const btn=document.createElement('button');
@@ -123,25 +82,25 @@ list.appendChild(btn);
 }
 
 function clearSignals() {
-document.getElementById('signals-container').innerHTML=`<div class="signal-placeholder"><div class="placeholder-icon">🎯</div><p>Select a pair and click <strong>Analyze</strong></p><p class="sub">ICT Smart Money analysis with Order Blocks, FVGs & Liquidity</p></div>`;
+const c=document.getElementById('signals-container');
+if(c) c.innerHTML='<div class="signal-card"><div class="signal-header"><span>Select a pair and click Analyze</span></div><p style="color:#9ca3af;text-align:center;padding:20px;">ICT Smart Money analysis with Order Blocks, FVGs & Liquidity</p></div>';
 }
 
 function saveToHistory(result) {
-if(result.signal==='NO SIGNAL') return;
+if(!result||result.signal==='NEUTRAL') return;
 const history=JSON.parse(localStorage.getItem('ict_signal_history')||'[]');
 const signal={
 id:Date.now().toString(),
-timestamp:new Date().toISOString(),
+timestamp:result.timestamp||new Date().toISOString(),
 pair:result.pair,
 signal:result.signal,
 entry:result.entry,
-tp:result.tp,
-sl:result.sl,
-riskReward:result.riskReward,
+tp1:result.tp1, tp2:result.tp2, tp3:result.tp3,
+sl:result.stopLoss,
+confidence:result.confidence,
 structure:result.structure,
-currentPrice:result.currentPrice,
-confluenceScore:result.confluenceScore||0,
-premiumDiscount:result.premiumDiscount||'',
+zone:result.zone,
+factors:result.factors,
 outcome:null
 };
 history.unshift(signal);
@@ -162,43 +121,80 @@ if(badgeTop) badgeTop.textContent=pending>0?pending:'';
 async function runAnalysis() {
 const btn=document.getElementById('analyze-btn');
 const container=document.getElementById('signals-container');
+if(!btn||!container) return;
 btn.disabled=true;
 btn.classList.add('loading');
-container.innerHTML=`<div class="signal-loading"><div class="spinner"></div><span>Fetching live price...</span></div>`;
-const {price,live}=await fetchLivePrice(currentSymbol);
-container.innerHTML=`<div class="signal-loading"><div class="spinner"></div><span>Fetching candle data...</span></div>`;
-const candles=await fetchCandles(currentSymbol);
-container.innerHTML=`<div class="signal-loading"><div class="spinner"></div><span>Running ICT analysis (structure, FVGs, OBs, liquidity)...</span></div>`;
+container.innerHTML='<div class="signal-card"><div class="loading-indicator"><div class="spinner"></div><p>Running ICT analysis...</p></div></div>';
+
+try {
 await new Promise(r=>setTimeout(r,300));
-let result;
-if(candles && candles.length>=30) {
-// Use real candle data for analysis
-result=ict.analyzeWithCandles(currentSymbol.symbol,candles,price,live);
-} else {
-// Fallback to synthetic candle generation
-result=ict.analyze(currentSymbol.symbol,price,live);
-}
+const result=await ictAnalyzer.analyze(currentSymbol.symbol,currentCategory);
+if(result) {
 saveToHistory(result);
 renderSignal(result);
+}
+} catch(err) {
+console.error('Analysis error:',err);
+container.innerHTML='<div class="signal-card"><p style="color:#ef4444;text-align:center;">Analysis error. Please try again.</p></div>';
+}
 btn.disabled=false;
 btn.classList.remove('loading');
 }
 
 function renderSignal(r) {
 const c=document.getElementById('signals-container');
-const liveTag=r.isLive?'<span class="live-tag">LIVE</span>':'';
-const fvgOb=`${r.fvgCount||0} / ${r.obCount||0}`;
-const pdZone=r.premiumDiscount||'';
-const score=r.confluenceScore||'';
-if(r.signal==='NO SIGNAL') {
-c.innerHTML=`<div class="signal-card no-signal" style="opacity:1;transform:none"><div class="signal-card-header"><span class="signal-pair">${r.pair} ${liveTag}</span><span class="signal-badge neutral">NO SIGNAL</span></div><div class="signal-card-body"><div class="signal-row"><span>💰 Price Now</span><span class="value">${r.currentPrice}</span></div><div class="signal-row"><span>📊 Structure</span><span class="value">${r.structure}</span></div><div class="signal-row"><span>🔍 FVGs / OBs</span><span class="value">${fvgOb}</span></div><div class="signal-row"><span>📍 Zone</span><span class="value">${pdZone}</span></div></div><div class="signal-reason">${r.reason}</div></div>`;
+if(!c) return;
+const sym=r.pair||currentSymbol.symbol;
+const fp=(v)=>formatPrice(v,sym);
+
+if(r.signal==='NEUTRAL') {
+c.innerHTML=`<div class="signal-card">
+<div class="signal-header"><span class="pair-name">${sym}</span><span class="signal-badge neutral">NEUTRAL</span></div>
+<div class="signal-row"><span>Structure</span><span>${r.structure||'--'}</span></div>
+<div class="signal-row"><span>Zone</span><span>${r.zone||'--'}</span></div>
+<div class="signal-row"><span>RSI</span><span>${r.rsi||'--'}</span></div>
+<div class="signal-row"><span>Session</span><span>${r.killzone?r.killzone.name:'--'}</span></div>
+<div class="signal-row"><span>Bull / Bear Score</span><span>${r.bullScore||0} / ${r.bearScore||0}</span></div>
+<p style="color:#9ca3af;text-align:center;margin-top:12px;">Insufficient confluence for a signal (need 5+ points)</p>
+<p style="color:#6b7280;text-align:center;font-size:11px;margin-top:8px;">Not financial advice.</p>
+</div>`;
 return;
 }
+
 const isBuy=r.signal==='BUY';
-c.innerHTML=`<div class="signal-card ${isBuy?'buy':'sell'}"><div class="signal-card-header"><span class="signal-pair">${r.pair} ${liveTag}</span><span class="signal-badge ${isBuy?'buy':'sell'}">${isBuy?'↑':'↓'} ${r.signal}</span></div><div class="signal-card-body"><div class="signal-row"><span>💰 Price Now</span><span class="value">${r.currentPrice}</span></div><div class="signal-row entry"><span>➡️ Entry Zone</span><span class="value">${r.entry}</span></div><div class="signal-row tp"><span>✅ Take Profit</span><span class="value">${r.tp}</span></div><div class="signal-row sl"><span>❌ Stop Loss</span><span class="value">${r.sl}</span></div><div class="signal-row"><span>🎯 Risk : Reward</span><span class="value">${r.riskReward}</span></div><div class="signal-row"><span>📊 Structure</span><span class="value">${r.structure}</span></div><div class="signal-row"><span>📍 Zone</span><span class="value">${pdZone}</span></div><div class="signal-row"><span>🔍 FVGs / OBs</span><span class="value">${fvgOb}</span></div>${score?`<div class="signal-row"><span>⭐ Confluence</span><span class="value">${score}/13</span></div>`:''}</div><div class="signal-reason">${r.reason}</div><div class="signal-disclaimer">⚠️ Educational only. Not financial advice.</div></div>`;
+const signalClass=isBuy?'buy':'sell';
+const arrow=isBuy?'\u2191':'\u2193';
+
+let factorsHtml='';
+if(r.factors&&r.factors.length>0) {
+factorsHtml='<div class="factors-list" style="margin-top:10px;">';
+r.factors.forEach(f=>{
+factorsHtml+=`<span class="factor-tag" style="display:inline-block;background:#1f2937;color:#d1d5db;padding:3px 8px;margin:2px;border-radius:4px;font-size:11px;">${f}</span>`;
+});
+factorsHtml+='</div>';
+}
+
+c.innerHTML=`<div class="signal-card ${signalClass}">
+<div class="signal-header"><span class="pair-name">${sym}</span><span class="signal-badge ${signalClass}">${arrow} ${r.signal}</span></div>
+<div class="signal-row"><span>Confidence</span><span>${r.confidence}%</span></div>
+<div class="signal-row"><span>Entry</span><span>${fp(r.entry)}</span></div>
+<div class="signal-row"><span>Stop Loss</span><span style="color:#ef4444">${fp(r.stopLoss)}</span></div>
+<div class="signal-row"><span>TP 1</span><span style="color:#10b981">${fp(r.tp1)}</span></div>
+<div class="signal-row"><span>TP 2</span><span style="color:#10b981">${fp(r.tp2)}</span></div>
+<div class="signal-row"><span>TP 3</span><span style="color:#10b981">${fp(r.tp3)}</span></div>
+<div class="signal-row"><span>Structure</span><span>${r.structure||'--'}</span></div>
+<div class="signal-row"><span>Zone</span><span>${r.zone||'--'}</span></div>
+<div class="signal-row"><span>FVGs (Bull/Bear)</span><span>${r.fvgs?r.fvgs.bullish:0} / ${r.fvgs?r.fvgs.bearish:0}</span></div>
+<div class="signal-row"><span>Order Blocks</span><span>${r.orderBlocks?r.orderBlocks.bullish:0} / ${r.orderBlocks?r.orderBlocks.bearish:0}</span></div>
+<div class="signal-row"><span>RSI</span><span>${r.rsi||'--'}</span></div>
+<div class="signal-row"><span>Session</span><span>${r.killzone?r.killzone.name:'--'}</span></div>
+<div class="signal-row"><span>Score</span><span>${r.bullScore||0} Bull / ${r.bearScore||0} Bear</span></div>
+${factorsHtml}
+<p style="color:#6b7280;text-align:center;font-size:11px;margin-top:12px;">Not financial advice.</p>
+</div>`;
+
 const card=c.querySelector('.signal-card');
-if(window.gsap){gsap.fromTo(card,{opacity:0,y:30},{opacity:1,y:0,duration:0.5,ease:'power2.out'});}
-else{card.style.opacity='1';card.style.transform='none';}
+if(card) { card.style.opacity='1'; card.style.transform='none'; }
 }
 
 function setupHamburger() {
@@ -207,13 +203,13 @@ const sidebar=document.querySelector('.sidebar');
 const overlay=document.querySelector('.sidebar-overlay');
 if(hamburger) {
 hamburger.addEventListener('click',()=>{
-sidebar.classList.toggle('active');
-overlay.classList.toggle('active');
+if(sidebar) sidebar.classList.toggle('active');
+if(overlay) overlay.classList.toggle('active');
 });
 }
 if(overlay) {
 overlay.addEventListener('click',()=>{
-sidebar.classList.remove('active');
+if(sidebar) sidebar.classList.remove('active');
 overlay.classList.remove('active');
 });
 }
@@ -227,7 +223,7 @@ createWidget(currentSymbol);
 updateHistoryBadge();
 const btn=document.getElementById('analyze-btn');
 if(btn) btn.addEventListener('click',runAnalysis);
-if('serviceWorker'in navigator) {
+if('serviceWorker' in navigator) {
 navigator.serviceWorker.register('/ict-trading-pwa/sw.js').catch(e=>console.log('SW error',e));
 }
 });
