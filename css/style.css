@@ -69,6 +69,35 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .signal-row.entry .value{color:var(--accent)}
 .signal-row.tp .value{color:var(--green)}
 .signal-row.sl .value{color:var(--red)}
+
+/* Enhanced readability styles for signals */
+.signal-card-header{padding:24px 20px}
+.signal-pair{font-size:22px;font-weight:800;letter-spacing:-0.5px}
+.signal-badge{padding:10px 20px;font-size:16px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase}
+
+.signal-card-body{padding:24px 20px;gap:16px}
+
+/* Larger, clearer signal rows */
+.signal-row{padding:16px 20px;border-radius:12px;min-height:60px;align-items:center;border:1px solid transparent;transition:all 0.2s}
+.signal-row:hover{border-color:var(--border);transform:translateX(4px)}
+
+/* Bigger labels and values */
+.signal-row span:first-child{font-size:15px;font-weight:500;letter-spacing:0.2px}
+.signal-row .value{font-size:20px;font-weight:700;letter-spacing:-0.3px}
+
+/* Key trade values - make them stand out more */
+.signal-row.entry{background:rgba(59,130,246,0.12);border-color:rgba(59,130,246,0.3)}
+.signal-row.entry .value{font-size:22px;color:#60a5fa}
+
+.signal-row.tp{background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.3)}
+.signal-row.tp .value{font-size:22px}
+
+.signal-row.sl{background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.3)}
+.signal-row.sl .value{font-size:22px}
+
+/* Better visual separation */
+.signal-reason{padding:20px;font-size:14px;line-height:1.6}
+.signal-disclaimer{padding:16px 20px;font-size:12px;opacity:0.8}
 .signal-reason{padding:16px 20px;background:var(--bg3);font-size:13px;color:var(--muted);border-top:1px solid var(--border)}
 .signal-disclaimer{padding:12px 20px;font-size:11px;color:var(--muted);text-align:center;background:var(--bg)}
 .signal-loading{display:flex;flex-direction:column;align-items:center;gap:16px;padding:60px}
