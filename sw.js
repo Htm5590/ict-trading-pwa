@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ict-trading-v7';
+const CACHE_NAME = 'ict-trading-v8';
 const ASSETS = [
   '/ict-trading-pwa/',
   '/ict-trading-pwa/index.html',
@@ -26,10 +26,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   e.respondWith(
-    fetch(e.request).then(response => {
-      const clone = response.clone();
+    fetch(e.request).then(r => {
+      const clone = r.clone();
       caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-      return response;
+      return r;
     }).catch(() => caches.match(e.request))
   );
 });
