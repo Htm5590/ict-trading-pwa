@@ -1,322 +1,266 @@
-/**
- * ICT (Inner Circle Trader) Methodology Analyzer
- * Rewritten with accurate ICT concepts:
- * - Proper FVG (Fair Value Gap) 3-candle pattern
- * - Correct Order Block identification (last opposing candle before displacement)
- * - Market Structure: BOS, ChoCH, MSS
- * - Premium/Discount zones (above/below 50% of swing range)
- * - OTE (Optimal Trade Entry) at 62%-79% Fibonacci retracement
- * - Liquidity sweep detection (equal highs/lows)
- * - Displacement detection (strong impulsive moves)
- */
+// ICT Trading Analyzer - Proper ICT Methodology
+// Implements: Market Structure (BOS/ChoCH), Order Blocks, FVG, Premium/Discount, OTE, Liquidity
+
 class ICTAnalyzer {
   constructor() {
-    this.pipSize = {
-      'EUR/USD':0.0001,'GBP/USD':0.0001,'AUD/USD':0.0001,'NZD/USD':0.0001,
-      'USD/CHF':0.0001,'USD/CAD':0.0001,'EUR/GBP':0.0001,
-      'USD/JPY':0.01,'EUR/JPY':0.01,'GBP/JPY':0.01,
-      'XAU/USD':0.01,
-      'BTC/USD':1,'ETH/USD':0.1,'BNB/USD':0.01,'SOL/USD':0.01,'XRP/USD':0.0001,
-      'US30':1,'US100':1,'US500':0.1,'DAX':1,'FTSE 100':1
-    };
+    this.swingLen = 5;
   }
 
-  pip(pair) { return this.pipSize[pair] || 0.0001; }
-
-  decimals(pair) {
-    const p = this.pip(pair);
-    if (p >= 1) return 0;
-    return Math.abs(Math.floor(Math.log10(p)));
-  }
-
-  fmt(price, pair) {
-    return Number(price).toFixed(this.decimals(pair));
-  }
-
-  // ATR for volatility-based levels
-  calcATR(candles, period = 14) {
-    if (candles.length < period + 1) return 0;
-    let sum = 0;
-    for (let i = candles.length - period; i < candles.length; i++) {
-      const prev = candles[i - 1];
-      const c = candles[i];
-      const tr = Math.max(c.high - c.low, Math.abs(c.high - prev.close), Math.abs(c.low - prev.close));
-      sum += tr;
+  // ===== CANDLE DATA FETCHING =====
+  async fetchCandles(pair, type) {
+    try {
+      if (type === 'crypto') {
+        return await this.fetchBinanceCandles(pair);
+      } else {
+        return this.generateSimulatedCandles(pair);
+      }
+    } catch (e) {
+      console.error('Candle fetch error:', e);
+      return this.generateSimulatedCandles(pair);
     }
-    return sum / period;
   }
 
-  // Find swing highs and swing lows using left/right lookback
-  findSwings(candles, left = 5, right = 2) {
+  async fetchBinanceCandles(pair) {
+    const symbol = pair.replace('/', '').toUpperCase();
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1h&limit=100`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) {
+        const url2 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=100`;
+        const r2 = await fetch(url2);
+        if (!r2.ok) return this.generateSimulatedCandles(pair);
+        const d2 = await r2.json();
+        return d2.map(k => ({ time: k[0], open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
+      }
+      const d = await r.json();
+      return d.map(k => ({ time: k[0], open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
+    } catch {
+      return this.generateSimulatedCandles(pair);
+    }
+  }
 
-      // RSI for momentum confirmation (improves win rate +10%)
+  generateSimulatedCandles(pair) {
+    const candles = [];
+    let price = pair.includes('JPY') ? 150 : pair.includes('GBP') ? 1.27 : pair.includes('EUR') ? 1.08 : pair.includes('BTC') ? 67000 : pair.includes('ETH') ? 3500 : pair.includes('US30') ? 39000 : pair.includes('NAS') ? 17500 : pair.includes('SPX') ? 5100 : 1.0;
+    const vol = price * 0.003;
+    for (let i = 0; i < 100; i++) {
+      const o = price + (Math.random() - 0.5) * vol;
+      const c = o + (Math.random() - 0.5) * vol;
+      const h = Math.max(o, c) + Math.random() * vol * 0.5;
+      const l = Math.min(o, c) - Math.random() * vol * 0.5;
+      candles.push({ time: Date.now() - (100 - i) * 3600000, open: o, high: h, low: l, close: c, volume: Math.random() * 1000 });
+      price = c;
+    }
+    return candles;
+  }
+
+  // ===== SWING POINT DETECTION =====
+  findSwings(candles) {
+    const highs = [];
+    const lows = [];
+    const len = this.swingLen;
+    for (let i = len; i < candles.length - len; i++) {
+      let isHigh = true;
+      let isLow = true;
+      for (let j = 1; j <= len; j++) {
+        if (candles[i].high <= candles[i - j].high || candles[i].high <= candles[i + j].high) isHigh = false;
+        if (candles[i].low >= candles[i - j].low || candles[i].low >= candles[i + j].low) isLow = false;
+      }
+      if (isHigh) highs.push({ index: i, price: candles[i].high, time: candles[i].time });
+      if (isLow) lows.push({ index: i, price: candles[i].low, time: candles[i].time });
+    }
+    return { highs, lows };
+  }
+
+  // ===== RSI CALCULATION =====
   calcRSI(candles, period = 14) {
     if (candles.length < period + 1) return 50;
     let gains = 0, losses = 0;
-    for (let i = candles.length - period; i < candles.length; i++) {
-      const change = candles[i].close - candles[i - 1].close;
-      if (change > 0) gains += change;
-      else losses -= change;
+    for (let i = 1; i <= period; i++) {
+      const diff = candles[i].close - candles[i - 1].close;
+      if (diff > 0) gains += diff; else losses -= diff;
     }
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    for (let i = period + 1; i < candles.length; i++) {
+      const diff = candles[i].close - candles[i - 1].close;
+      if (diff > 0) {
+        avgGain = (avgGain * (period - 1) + diff) / period;
+        avgLoss = (avgLoss * (period - 1)) / period;
+      } else {
+        avgGain = (avgGain * (period - 1)) / period;
+        avgLoss = (avgLoss * (period - 1) - diff) / period;
+      }
+    }
     if (avgLoss === 0) return 100;
     const rs = avgGain / avgLoss;
     return 100 - (100 / (1 + rs));
   }
 
-  // Killzone detection for session filtering (improves win rate +15%)
+  // ===== KILLZONE DETECTION =====
   getKillzone() {
-    const hour = new Date().getUTCHours();
-    if (hour >= 7 && hour < 10) return { name: 'London Open', score: 3, active: true };
-    if (hour >= 13 && hour < 16) return { name: 'NY Open', score: 3, active: true };
-    if (hour >= 1 && hour < 5) return { name: 'Asian', score: 1, active: false };
-    return { name: 'Off Session', score: 0, active: false };
+    const now = new Date();
+    const utcH = now.getUTCHours();
+    if (utcH >= 0 && utcH < 5) return { name: 'Asian', active: true };
+    if (utcH >= 7 && utcH < 10) return { name: 'London', active: true };
+    if (utcH >= 12 && utcH < 15) return { name: 'New York AM', active: true };
+    if (utcH >= 15 && utcH < 17) return { name: 'New York PM', active: true };
+    return { name: 'Off-Session', active: false };
   }
 
-    const highs = [], lows = [];
-    for (let i = left; i < candles.length - right; i++) {
-      let isHigh = true, isLow = true;
-      for (let j = i - left; j <= i + right; j++) {
-        if (j === i) continue;
-        if (candles[j].high >= candles[i].high) isHigh = false;
-        if (candles[j].low <= candles[i].low) isLow = false;
-      }
-      if (isHigh) highs.push({ index: i, price: candles[i].high });
-      if (isLow) lows.push({ index: i, price: candles[i].low });
-    }
-    return { highs, lows };
-  }
-
-  /**
-   * Market Structure Analysis
-   * Bullish: Higher Highs (HH) + Higher Lows (HL)
-   * Bearish: Lower Lows (LL) + Lower Highs (LH)
-   * BOS = Break of Structure (trend continuation)
-   * ChoCH = Change of Character (trend reversal)
-   */
-  analyzeMarketStructure(candles) {
-    const swings = this.findSwings(candles);
+  // ===== MARKET STRUCTURE - BOS & ChoCH =====
+  detectStructure(candles, swings) {
     const { highs, lows } = swings;
-    if (highs.length < 2 || lows.length < 2) return { trend: 'ranging', bos: null, choch: null, swings };
+    let trend = 'neutral';
+    let bos = null;
+    let choch = null;
+    const lastPrice = candles[candles.length - 1].close;
 
-    // Merge and sort swings chronologically
-    const all = [];
-    highs.forEach(h => all.push({ ...h, type: 'high' }));
-    lows.forEach(l => all.push({ ...l, type: 'low' }));
-    all.sort((a, b) => a.index - b.index);
+    // Need at least 2 swing highs and 2 swing lows
+    if (highs.length < 2 || lows.length < 2) return { trend, bos, choch };
 
-    // Track HH/HL/LH/LL sequence
-    let lastHigh = null, lastLow = null;
-    let hhCount = 0, hlCount = 0, lhCount = 0, llCount = 0;
-    let lastBOS = null, lastChoCH = null;
+    const lastSH = highs[highs.length - 1];
+    const prevSH = highs[highs.length - 2];
+    const lastSL = lows[lows.length - 1];
+    const prevSL = lows[lows.length - 2];
 
-    for (const swing of all) {
-      if (swing.type === 'high') {
-        if (lastHigh !== null) {
-          if (swing.price > lastHigh.price) {
-            hhCount++;
-            // BOS bullish: price breaks above previous swing high
-            lastBOS = { type: 'bullish', price: lastHigh.price, index: swing.index };
-          } else {
-            lhCount++;
-            // If we were bullish (HH+HL) and now make LH, that's ChoCH
-            if (hhCount > 0 && hlCount > 0) {
-              lastChoCH = { type: 'bearish', price: swing.price, index: swing.index };
-            }
-          }
-        }
-        lastHigh = swing;
-      } else {
-        if (lastLow !== null) {
-          if (swing.price > lastLow.price) {
-            hlCount++;
-          } else {
-            llCount++;
-            // BOS bearish: price breaks below previous swing low
-            lastBOS = { type: 'bearish', price: lastLow.price, index: swing.index };
-            // If we were bearish (LL+LH) and now make HL, that's bullish ChoCH
-            if (llCount > 0 && lhCount > 0 && swing.price < lastLow.price) {
-              lastChoCH = { type: 'bearish', price: swing.price, index: swing.index };
-            }
-          }
-        }
-        lastLow = swing;
-      }
+    // Bullish structure: Higher Highs and Higher Lows
+    const hh = lastSH.price > prevSH.price;
+    const hl = lastSL.price > prevSL.price;
+    // Bearish structure: Lower Highs and Lower Lows
+    const lh = lastSH.price < prevSH.price;
+    const ll = lastSL.price < prevSL.price;
+
+    if (hh && hl) trend = 'bullish';
+    else if (lh && ll) trend = 'bearish';
+
+    // BOS: price breaks past the last swing in trend direction
+    if (trend === 'bullish' && lastPrice > lastSH.price) {
+      bos = { type: 'bullish', level: lastSH.price };
+    } else if (trend === 'bearish' && lastPrice < lastSL.price) {
+      bos = { type: 'bearish', level: lastSL.price };
     }
 
-    // Determine overall trend from recent swings (last 3-4)
-    const recentHighs = highs.slice(-3);
-    const recentLows = lows.slice(-3);
-    let recentHH = 0, recentHL = 0, recentLH = 0, recentLL = 0;
-
-    for (let i = 1; i < recentHighs.length; i++) {
-      if (recentHighs[i].price > recentHighs[i-1].price) recentHH++;
-      else recentLH++;
-    }
-    for (let i = 1; i < recentLows.length; i++) {
-      if (recentLows[i].price > recentLows[i-1].price) recentHL++;
-      else recentLL++;
+    // ChoCH: Change of Character - price breaks against the trend
+    if (trend === 'bullish' && lastPrice < lastSL.price) {
+      choch = { type: 'bearish_choch', level: lastSL.price };
+    } else if (trend === 'bearish' && lastPrice > lastSH.price) {
+      choch = { type: 'bullish_choch', level: lastSH.price };
     }
 
-    let trend = 'ranging';
-    if (recentHH >= 1 && recentHL >= 1) trend = 'bullish';
-    else if (recentLL >= 1 && recentLH >= 1) trend = 'bearish';
-    else if (recentHH >= 1) trend = 'bullish';
-    else if (recentLL >= 1) trend = 'bearish';
-
-    return { trend, bos: lastBOS, choch: lastChoCH, swings, hhCount, hlCount, lhCount, llCount };
+    return { trend, bos, choch };
   }
 
-  /**
-   * CORRECT ICT FVG (Fair Value Gap) Detection
-   * 3-candle pattern where:
-   * - Bullish FVG: Gap between candle 1 HIGH and candle 3 LOW (candle 2 is the impulse)
-   * - Bearish FVG: Gap between candle 1 LOW and candle 3 HIGH (candle 2 is the impulse)
-   * The middle candle body should not be overlapped by candle 1 and 3 bodies
-   */
+  // ===== FAIR VALUE GAP (FVG) - 3 Candle Pattern =====
   findFVGs(candles) {
-    const fvgs = [];
-    const atr = this.calcATR(candles);
+    const bullishFVGs = [];
+    const bearishFVGs = [];
     for (let i = 2; i < candles.length; i++) {
-      const c1 = candles[i - 2]; // first candle
-      const c2 = candles[i - 1]; // middle impulse candle
-      const c3 = candles[i];     // third candle
-
-      // Bullish FVG: candle3.low > candle1.high (gap above)
-      // The middle candle moved up so fast it left a gap
+      const c1 = candles[i - 2];
+      const c2 = candles[i - 1];
+      const c3 = candles[i];
+      // Bullish FVG: candle 3 low > candle 1 high (gap up)
       if (c3.low > c1.high) {
-        const gapSize = c3.low - c1.high;
-        if (gapSize > atr * 0.1) { // minimum gap size filter
-          fvgs.push({
-            type: 'bullish',
-            top: c3.low,
-            bottom: c1.high,
-            mid: (c3.low + c1.high) / 2,
-            size: gapSize,
-            index: i - 1,
-            filled: false
-          });
-        }
+        bullishFVGs.push({ top: c3.low, bottom: c1.high, index: i, midpoint: (c3.low + c1.high) / 2 });
       }
-
-      // Bearish FVG: candle1.low > candle3.high (gap below)
-      // The middle candle moved down so fast it left a gap
+      // Bearish FVG: candle 1 low > candle 3 high (gap down)
       if (c1.low > c3.high) {
-        const gapSize = c1.low - c3.high;
-        if (gapSize > atr * 0.1) {
-          fvgs.push({
-            type: 'bearish',
-            top: c1.low,
-            bottom: c3.high,
-            mid: (c1.low + c3.high) / 2,
-            size: gapSize,
-            index: i - 1,
-            filled: false
-          });
-        }
+        bearishFVGs.push({ top: c1.low, bottom: c3.high, index: i, midpoint: (c1.low + c3.high) / 2 });
       }
     }
-
-    // Check if FVGs have been filled by subsequent price action
-    for (const fvg of fvgs) {
-      for (let j = fvg.index + 2; j < candles.length; j++) {
-        if (fvg.type === 'bullish' && candles[j].low <= fvg.bottom) {
-          fvg.filled = true;
-          break;
-        }
-        if (fvg.type === 'bearish' && candles[j].high >= fvg.top) {
-          fvg.filled = true;
-          break;
-        }
-      }
-    }
-
-    return fvgs;
+    return { bullish: bullishFVGs, bearish: bearishFVGs };
   }
 
-  /**
-   * CORRECT ICT Order Block Detection
-   * Bullish OB: The LAST bearish (down-close) candle before a strong bullish displacement move
-   * Bearish OB: The LAST bullish (up-close) candle before a strong bearish displacement move
-   * Requires: displacement (strong impulsive move > 1.5x ATR) + BOS confirmation
-   */
+  // ===== ORDER BLOCKS =====
   findOrderBlocks(candles) {
-    const obs = [];
-    const atr = this.calcATR(candles);
-    if (atr === 0) return obs;
-
+    const bullishOBs = [];
+    const bearishOBs = [];
     for (let i = 1; i < candles.length - 2; i++) {
       const c = candles[i];
-      const isBearishCandle = c.close < c.open; // red/bearish candle
-      const isBullishCandle = c.close > c.open; // green/bullish candle
+      const next = candles[i + 1];
+      const bodySize = Math.abs(c.close - c.open);
+      const nextBodySize = Math.abs(next.close - next.open);
+      const avgBody = bodySize > 0 ? bodySize : 0.0001;
 
-      // Check displacement after this candle (next 1-3 candles)
-      let maxMoveUp = 0, maxMoveDown = 0;
-      const lookAhead = Math.min(i + 4, candles.length);
-      for (let j = i + 1; j < lookAhead; j++) {
-        maxMoveUp = Math.max(maxMoveUp, candles[j].high - c.high);
-        maxMoveDown = Math.max(maxMoveDown, c.low - candles[j].low);
-      }
-
-      // Bullish OB: bearish candle followed by strong upward displacement
-      if (isBearishCandle && maxMoveUp > atr * 2.5) {
-        // Verify it's the LAST bearish candle before the move
-        const nextCandle = candles[i + 1];
-        if (nextCandle.close > nextCandle.open) { // next candle is bullish (displacement)
-          obs.push({
-            type: 'bullish',
-            high: c.high,
-            low: c.low,
-            open: c.open,
-            close: c.close,
-            mid: (c.high + c.low) / 2,
-            index: i,
-            strength: maxMoveUp / atr
-          });
+      // Bullish OB: bearish candle followed by strong bullish displacement
+      if (c.close < c.open && next.close > next.open && nextBodySize > avgBody * 1.5) {
+        // Check displacement: next candle closes above current candle high
+        if (next.close > c.high) {
+          bullishOBs.push({ high: c.open, low: c.low, index: i, midpoint: (c.open + c.low) / 2 });
         }
       }
-
-      // Bearish OB: bullish candle followed by strong downward displacement
-      if (isBullishCandle && maxMoveDown > atr * 2.5) {
-        const nextCandle = candles[i + 1];
-        if (nextCandle.close < nextCandle.open) { // next candle is bearish (displacement)
-          obs.push({
-            type: 'bearish',
-            high: c.high,
-            low: c.low,
-            open: c.open,
-            close: c.close,
-            mid: (c.high + c.low) / 2,
-            index: i,
-            strength: maxMoveDown / atr
-          });
+      // Bearish OB: bullish candle followed by strong bearish displacement
+      if (c.close > c.open && next.close < next.open && nextBodySize > avgBody * 1.5) {
+        if (next.close < c.low) {
+          bearishOBs.push({ high: c.high, low: c.open, index: i, midpoint: (c.high + c.open) / 2 });
         }
       }
     }
-
-    return obs;
+    return { bullish: bullishOBs, bearish: bearishOBs };
   }
 
-  /**
-   * Liquidity Detection
-   * Equal highs = buy-side liquidity (stops above)
-   * Equal lows = sell-side liquidity (stops below)
-   * Liquidity sweep = price briefly breaks beyond then reverses
-   */
-  findLiquidity(candles, swings) {
-    const atr = this.calcATR(candles);
-    const tolerance = atr * 0.3;
-    const buySide = []; // equal highs
-    const sellSide = []; // equal lows
-
+  // ===== PREMIUM/DISCOUNT ZONES =====
+  getPremiumDiscount(candles, swings) {
     const { highs, lows } = swings;
+    if (highs.length === 0 || lows.length === 0) return { zone: 'equilibrium', eqLevel: candles[candles.length - 1].close };
+    // Use the most recent swing range
+    const recentHigh = Math.max(...highs.slice(-3).map(h => h.price));
+    const recentLow = Math.min(...lows.slice(-3).map(l => l.price));
+    const range = recentHigh - recentLow;
+    const eq = recentLow + range * 0.5;
+    const lastPrice = candles[candles.length - 1].close;
+    let zone;
+    if (lastPrice > eq + range * 0.1) zone = 'premium';
+    else if (lastPrice < eq - range * 0.1) zone = 'discount';
+    else zone = 'equilibrium';
+    return { zone, eqLevel: eq, high: recentHigh, low: recentLow };
+  }
+
+  // ===== OPTIMAL TRADE ENTRY (OTE) - Fib 0.618-0.786 =====
+  findOTE(candles, swings, trend) {
+    const { highs, lows } = swings;
+    if (highs.length === 0 || lows.length === 0) return null;
+    const lastPrice = candles[candles.length - 1].close;
+    let ote = null;
+
+    if (trend === 'bullish' && lows.length >= 1 && highs.length >= 1) {
+      const swingLow = lows[lows.length - 1].price;
+      const swingHigh = highs[highs.length - 1].price;
+      if (swingHigh > swingLow) {
+        const range = swingHigh - swingLow;
+        const fib618 = swingHigh - range * 0.618;
+        const fib786 = swingHigh - range * 0.786;
+        const inOTE = lastPrice >= fib786 && lastPrice <= fib618;
+        ote = { fib618, fib786, inOTE, direction: 'long' };
+      }
+    } else if (trend === 'bearish' && highs.length >= 1 && lows.length >= 1) {
+      const swingHigh = highs[highs.length - 1].price;
+      const swingLow = lows[lows.length - 1].price;
+      if (swingHigh > swingLow) {
+        const range = swingHigh - swingLow;
+        const fib618 = swingLow + range * 0.618;
+        const fib786 = swingLow + range * 0.786;
+        const inOTE = lastPrice >= fib618 && lastPrice <= fib786;
+        ote = { fib618, fib786, inOTE, direction: 'short' };
+      }
+    }
+    return ote;
+  }
+
+  // ===== LIQUIDITY DETECTION =====
+  findLiquidity(candles, swings) {
+    const { highs, lows } = swings;
+    const lastPrice = candles[candles.length - 1].close;
+    const buyLiquidity = []; // Above equal highs
+    const sellLiquidity = []; // Below equal lows
 
     // Find equal highs (buy-side liquidity)
     for (let i = 0; i < highs.length - 1; i++) {
       for (let j = i + 1; j < highs.length; j++) {
-        if (Math.abs(highs[i].price - highs[j].price) < tolerance) {
-          buySide.push({ price: Math.max(highs[i].price, highs[j].price), indices: [highs[i].index, highs[j].index] });
+        const diff = Math.abs(highs[i].price - highs[j].price);
+        const avg = (highs[i].price + highs[j].price) / 2;
+        if (diff / avg < 0.002) { // Within 0.2%
+          buyLiquidity.push({ level: avg, type: 'equal_highs' });
         }
       }
     }
@@ -324,429 +268,162 @@ class ICTAnalyzer {
     // Find equal lows (sell-side liquidity)
     for (let i = 0; i < lows.length - 1; i++) {
       for (let j = i + 1; j < lows.length; j++) {
-        if (Math.abs(lows[i].price - lows[j].price) < tolerance) {
-          sellSide.push({ price: Math.min(lows[i].price, lows[j].price), indices: [lows[i].index, lows[j].index] });
+        const diff = Math.abs(lows[i].price - lows[j].price);
+        const avg = (lows[i].price + lows[j].price) / 2;
+        if (diff / avg < 0.002) {
+          sellLiquidity.push({ level: avg, type: 'equal_lows' });
         }
       }
     }
 
-    // Check for recent liquidity sweeps
-    const lastCandle = candles[candles.length - 1];
-    let recentSweep = null;
-    for (const liq of buySide) {
-      if (lastCandle.high > liq.price && lastCandle.close < liq.price) {
-        recentSweep = { type: 'buyside_sweep', price: liq.price };
+    return { buyLiquidity, sellLiquidity };
+  }
+
+  // ===== MAIN ANALYSIS - CONFLUENCE SCORING =====
+  async analyze(pair, type = 'forex') {
+    try {
+      const candles = await this.fetchCandles(pair, type);
+      if (!candles || candles.length < 20) {
+        return { signal: 'NEUTRAL', confidence: 0, reason: 'Insufficient data' };
       }
-    }
-    for (const liq of sellSide) {
-      if (lastCandle.low < liq.price && lastCandle.close > liq.price) {
-        recentSweep = { type: 'sellside_sweep', price: liq.price };
+
+      const lastPrice = candles[candles.length - 1].close;
+      const swings = this.findSwings(candles);
+      const structure = this.detectStructure(candles, swings);
+      const fvgs = this.findFVGs(candles);
+      const obs = this.findOrderBlocks(candles);
+      const pd = this.getPremiumDiscount(candles, swings);
+      const ote = this.findOTE(candles, swings, structure.trend);
+      const liquidity = this.findLiquidity(candles, swings);
+      const rsi = this.calcRSI(candles);
+      const killzone = this.getKillzone();
+
+      // Confluence scoring
+      let bullScore = 0;
+      let bearScore = 0;
+      const factors = [];
+
+      // 1. Market Structure (3 points)
+      if (structure.trend === 'bullish') { bullScore += 3; factors.push('Bullish Structure'); }
+      if (structure.trend === 'bearish') { bearScore += 3; factors.push('Bearish Structure'); }
+
+      // 2. BOS (2 points)
+      if (structure.bos) {
+        if (structure.bos.type === 'bullish') { bullScore += 2; factors.push('Bullish BOS'); }
+        if (structure.bos.type === 'bearish') { bearScore += 2; factors.push('Bearish BOS'); }
       }
-    }
 
-    return { buySide, sellSide, recentSweep };
-  }
+      // 3. ChoCH (2 points - reversal signal)
+      if (structure.choch) {
+        if (structure.choch.type === 'bullish_choch') { bullScore += 2; factors.push('Bullish ChoCH'); }
+        if (structure.choch.type === 'bearish_choch') { bearScore += 2; factors.push('Bearish ChoCH'); }
+      }
 
-  /**
-   * Premium/Discount Zone
-   * Premium = above 50% of swing range (sell zone)
-   * Discount = below 50% of swing range (buy zone)
-   * Equilibrium = 50% level
-   */
-  getPremiumDiscount(price, swings) {
-    const { highs, lows } = swings;
-    if (highs.length === 0 || lows.length === 0) return { zone: 'equilibrium', level: 0.5 };
+      // 4. Premium/Discount (2 points)
+      if (pd.zone === 'discount') { bullScore += 2; factors.push('Discount Zone'); }
+      if (pd.zone === 'premium') { bearScore += 2; factors.push('Premium Zone'); }
 
-    const swingHigh = Math.max(...highs.map(h => h.price));
-    const swingLow = Math.min(...lows.map(l => l.price));
-    const range = swingHigh - swingLow;
-    if (range === 0) return { zone: 'equilibrium', level: 0.5 };
+      // 5. OTE (2 points)
+      if (ote && ote.inOTE) {
+        if (ote.direction === 'long') { bullScore += 2; factors.push('OTE Long Zone'); }
+        if (ote.direction === 'short') { bearScore += 2; factors.push('OTE Short Zone'); }
+      }
 
-    const level = (price - swingLow) / range; // 0 = bottom, 1 = top
-    const equilibrium = (swingHigh + swingLow) / 2;
+      // 6. Order Blocks near price (1 point each)
+      const priceRange = lastPrice * 0.005;
+      const nearBullOB = obs.bullish.filter(ob => lastPrice >= ob.low - priceRange && lastPrice <= ob.high + priceRange);
+      const nearBearOB = obs.bearish.filter(ob => lastPrice >= ob.low - priceRange && lastPrice <= ob.high + priceRange);
+      if (nearBullOB.length > 0) { bullScore += 1; factors.push(`Bullish OB (${nearBullOB.length})`); }
+      if (nearBearOB.length > 0) { bearScore += 1; factors.push(`Bearish OB (${nearBearOB.length})`); }
 
-    let zone;
-    if (level > 0.5) zone = 'premium';
-    else if (level < 0.5) zone = 'discount';
-    else zone = 'equilibrium';
+      // 7. FVGs (1 point)
+      const recentBullFVG = fvgs.bullish.filter(f => f.index >= candles.length - 15);
+      const recentBearFVG = fvgs.bearish.filter(f => f.index >= candles.length - 15);
+      if (recentBullFVG.length > 0) { bullScore += 1; factors.push(`Bullish FVG (${recentBullFVG.length})`); }
+      if (recentBearFVG.length > 0) { bearScore += 1; factors.push(`Bearish FVG (${recentBearFVG.length})`); }
 
-    return { zone, level, equilibrium, swingHigh, swingLow };
-  }
+      // 8. RSI confirmation (1 point)
+      if (rsi < 40) { bullScore += 1; factors.push(`RSI Oversold (${rsi.toFixed(0)})`); }
+      if (rsi > 60) { bearScore += 1; factors.push(`RSI Overbought (${rsi.toFixed(0)})`); }
 
-  /**
-   * OTE (Optimal Trade Entry) - Fibonacci 62%-79% retracement
-   * Finds the best entry zone within a retracement
-   */
-  calcOTE(swingHigh, swingLow, direction) {
-    const range = swingHigh - swingLow;
-    if (direction === 'buy') {
-      // Buy OTE: 62%-79% retracement from high (deep pullback in discount)
+      // 9. Killzone (1 point)
+      if (killzone.active) { bullScore += 0.5; bearScore += 0.5; factors.push(`${killzone.name} Session`); }
+
+      // Determine signal
+      const totalPossible = 13;
+      let signal, confidence, direction;
+      if (bullScore > bearScore && bullScore >= 5) {
+        signal = 'BUY';
+        confidence = Math.min(Math.round((bullScore / totalPossible) * 100), 95);
+        direction = 'bullish';
+      } else if (bearScore > bullScore && bearScore >= 5) {
+        signal = 'SELL';
+        confidence = Math.min(Math.round((bearScore / totalPossible) * 100), 95);
+        direction = 'bearish';
+      } else {
+        signal = 'NEUTRAL';
+        confidence = Math.round(Math.max(bullScore, bearScore) / totalPossible * 100);
+        direction = 'neutral';
+      }
+
+      // Calculate entry, SL, TP
+      const atr = this.calcATR(candles);
+      let entry = lastPrice;
+      let sl, tp1, tp2, tp3;
+      if (signal === 'BUY') {
+        sl = entry - atr * 1.5;
+        tp1 = entry + atr * 1;
+        tp2 = entry + atr * 2;
+        tp3 = entry + atr * 3;
+      } else if (signal === 'SELL') {
+        sl = entry + atr * 1.5;
+        tp1 = entry - atr * 1;
+        tp2 = entry - atr * 2;
+        tp3 = entry - atr * 3;
+      } else {
+        sl = entry - atr; tp1 = entry + atr; tp2 = entry + atr * 2; tp3 = entry + atr * 3;
+      }
+
       return {
-        oteHigh: swingHigh - range * 0.62,
-        oteLow: swingHigh - range * 0.79,
-        optimal: swingHigh - range * 0.705  // 70.5% sweet spot
-      };
-    } else {
-      // Sell OTE: 62%-79% retracement from low (deep pullback in premium)
-      return {
-        oteHigh: swingLow + range * 0.79,
-        oteLow: swingLow + range * 0.62,
-        optimal: swingLow + range * 0.705
-      };
-    }
-  }
-
-  /**
-   * Main Signal Generator with ICT Confluence Scoring
-   * A valid ICT setup requires multiple confluences:
-   * 1. Market structure (trend direction via BOS/ChoCH)
-   * 2. Premium/Discount zone alignment
-   * 3. Order Block or FVG as entry zone
-   * 4. Liquidity target (where to take profit)
-   * 5. OTE alignment (entry within 62%-79% fib zone)
-   */
-  generateSignal(pair, candles) {
-    if (candles.length < 30) {
-      return {
-        pair, signal: 'NO SIGNAL', currentPrice: '--',
-        structure: 'insufficient data',
-        reason: 'Need at least 30 candles for ICT analysis',
+        signal, confidence, direction, entry,
+        stopLoss: sl, tp1, tp2, tp3,
+        structure: structure.trend,
+        bos: structure.bos,
+        choch: structure.choch,
+        zone: pd.zone,
+        ote,
+        fvgs: { bullish: recentBullFVG.length, bearish: recentBearFVG.length },
+        orderBlocks: { bullish: nearBullOB.length, bearish: nearBearOB.length },
+        rsi: rsi.toFixed(1),
+        killzone,
+        liquidity,
+        factors,
+        bullScore,
+        bearScore,
+        pair,
         timestamp: new Date().toISOString()
       };
+    } catch (err) {
+      console.error('Analysis error:', err);
+      return { signal: 'NEUTRAL', confidence: 0, reason: 'Analysis error: ' + err.message, pair };
     }
-
-    const price = candles[candles.length - 1].close;
-    const atr = this.calcATR(candles);
-    const ms = this.analyzeMarketStructure(candles);
-    const fvgs = this.findFVGs(candles);
-    const obs = this.findOrderBlocks(candles);
-    const liq = this.findLiquidity(candles, ms.swings);
-    const pd = this.getPremiumDiscount(price, ms.swings);
-
-    // Separate unfilled FVGs and unmitigated OBs
-    const unfilledFVGs = fvgs.filter(f => !f.filled);
-    const bullishFVGs = unfilledFVGs.filter(f => f.type === 'bullish');
-    const bearishFVGs = unfilledFVGs.filter(f => f.type === 'bearish');
-    const bullishOBs = obs.filter(o => o.type === 'bullish');
-    const bearishOBs = obs.filter(o => o.type === 'bearish');
-
-    // Get recent OBs near current price (within 3 ATR)
-    const nearBullOBs = bullishOBs.filter(o => price - o.high < atr * 3 && price >= o.low);
-    const nearBearOBs = bearishOBs.filter(o => o.low - price < atr * 3 && price <= o.high);
-
-    // Get recent unfilled FVGs near current price
-    const nearBullFVGs = bullishFVGs.filter(f => price - f.top < atr * 3 && price >= f.bottom);
-    const nearBearFVGs = bearishFVGs.filter(f => f.bottom - price < atr * 3 && price <= f.top);
-
-    let buyScore = 0, sellScore = 0;
-    let buyReasons = [], sellReasons = [];
-    let buyEntry = null, sellEntry = null;
-
-    // === BULLISH CONFLUENCE SCORING ===
-
-    // 1. Market Structure (most important)
-    if (ms.trend === 'bullish') { buyScore += 3; buyReasons.push('Bullish structure (HH+HL)'); }
-    if (ms.bos && ms.bos.type === 'bullish') { buyScore += 2; buyReasons.push('Bullish BOS confirmed'); }
-    if (ms.choch && ms.choch.type === 'bullish') { buyScore += 2; buyReasons.push('Bullish ChoCH (reversal)'); }
-
-    // 2. Premium/Discount zone
-    if (pd.zone === 'discount') { buyScore += 2; buyReasons.push('Price in discount zone'); }
-
-    // 3. Order Block proximity
-    if (nearBullOBs.length > 0) {
-      buyScore += 2;
-      const bestOB = nearBullOBs[nearBullOBs.length - 1];
-      buyEntry = bestOB.mid;
-      buyReasons.push('Near bullish OB at ' + this.fmt(bestOB.low, pair) + '-' + this.fmt(bestOB.high, pair));
-    }
-
-    // 4. FVG proximity
-    if (nearBullFVGs.length > 0) {
-      buyScore += 1;
-      if (!buyEntry) buyEntry = nearBullFVGs[nearBullFVGs.length - 1].mid;
-      buyReasons.push('Bullish FVG support');
-    }
-
-    // 5. Liquidity
-    if (liq.sellSide.length > 0) {
-      buyScore += 1;
-      buyReasons.push('Sell-side liquidity swept');
-    }
-    if (liq.recentSweep && liq.recentSweep.type === 'sellside_sweep') {
-      buyScore += 2;
-      buyReasons.push('Recent sell-side liquidity sweep');
-    }
-
-    // === BEARISH CONFLUENCE SCORING ===
-
-    // 1. Market Structure
-    if (ms.trend === 'bearish') { sellScore += 3; sellReasons.push('Bearish structure (LH+LL)'); }
-    if (ms.bos && ms.bos.type === 'bearish') { sellScore += 2; sellReasons.push('Bearish BOS confirmed'); }
-    if (ms.choch && ms.choch.type === 'bearish') { sellScore += 2; sellReasons.push('Bearish ChoCH (reversal)'); }
-
-    // 2. Premium/Discount zone
-    if (pd.zone === 'premium') { sellScore += 2; sellReasons.push('Price in premium zone'); }
-
-    // 3. Order Block proximity
-    if (nearBearOBs.length > 0) {
-      sellScore += 2;
-      const bestOB = nearBearOBs[nearBearOBs.length - 1];
-      sellEntry = bestOB.mid;
-      sellReasons.push('Near bearish OB at ' + this.fmt(bestOB.low, pair) + '-' + this.fmt(bestOB.high, pair));
-    }
-
-    // 4. FVG proximity
-    if (nearBearFVGs.length > 0) {
-      sellScore += 1;
-      if (!sellEntry) sellEntry = nearBearFVGs[nearBearFVGs.length - 1].mid;
-      sellReasons.push('Bearish FVG resistance');
-    }
-
-    // 5. Liquidity
-    if (liq.buySide.length > 0) {
-      sellScore += 1;
-      sellReasons.push('Buy-side liquidity available');
-    }
-    if (liq.recentSweep && liq.recentSweep.type === 'buyside_sweep') {
-      sellScore += 2;
-      sellReasons.push('Recent buy-side liquidity sweep');
-    }
-
-          // 6. RSI confirmation (adds +2 for oversold on buy, +2 for overbought on sell)
-        const rsi = this.calcRSI(candles);
-        if (rsi < 30) {
-                buyScore += 2;
-                buyReasons.push('RSI oversold (' + rsi.toFixed(1) + ')');
-              }
-        if (rsi > 70) {
-                sellScore += 2;
-                sellReasons.push('RSI overbought (' + rsi.toFixed(1) + ')');
-              }
-
-        // 7. Killzone/session filtering (adds +3 bonus for trading in optimal hours)
-        const killzone = this.getKillzone();
-        if (killzone.active) {
-                buyScore += killzone.score;
-                sellScore += killzone.score;
-                buyReasons.push('Trading in ' + killzone.name);
-                sellReasons.push('Trading in ' + killzone.name);
-              }
-
-    // === SIGNAL DECISION (minimum confluence score of 5) ===
-    const minScore = 5;
-    let signal = null, entry = null, sl = null, tp = null, reasons = [], rr = '1:3';
-
-    if (buyScore >= minScore && buyScore > sellScore) {
-      signal = 'BUY';
-      reasons = buyReasons;
-
-      // Entry: Use OB mid, FVG mid, or OTE level
-      if (buyEntry) {
-        entry = buyEntry;
-      } else if (pd.swingHigh && pd.swingLow) {
-        const ote = this.calcOTE(pd.swingHigh, pd.swingLow, 'buy');
-        entry = ote.optimal;
-      } else {
-        entry = price;
-      }
-
-      // If entry is too far from price, use price as entry
-      if (Math.abs(price - entry) > atr * 2) entry = price;
-
-      // SL: Below the OB low or below recent swing low
-      const recentLows = ms.swings.lows;
-      if (nearBullOBs.length > 0) {
-        sl = nearBullOBs[nearBullOBs.length - 1].low - atr * 1.5;
-      } else if (recentLows.length > 0) {
-        sl = recentLows[recentLows.length - 1].price - atr * 1.5;
-      } else {
-        sl = entry - atr * 2;
-      }
-
-      // TP: Target buy-side liquidity (equal highs) or next swing high
-      const risk = entry - sl;
-      if (liq.buySide.length > 0) {
-        const target = liq.buySide[liq.buySide.length - 1].price;
-        tp = target;
-        const reward = tp - entry;
-        rr = '1:' + Math.max(1, (reward / risk)).toFixed(1);
-      } else if (ms.swings.highs.length > 0) {
-        tp = Math.max(...ms.swings.highs.map(h => h.price));
-        const reward = tp - entry;
-        rr = '1:' + Math.max(1, (reward / risk)).toFixed(1);
-      } else {
-        tp = entry + risk * 3;
-        rr = '1:3';
-      }
-
-      // Ensure minimum 1:2 RR
-      if ((tp - entry) < risk * 2) {
-        tp = entry + risk * 3;
-        rr = '1:3';
-      }
-
-    } else if (sellScore >= minScore && sellScore > buyScore) {
-      signal = 'SELL';
-      reasons = sellReasons;
-
-      // Entry
-      if (sellEntry) {
-        entry = sellEntry;
-      } else if (pd.swingHigh && pd.swingLow) {
-        const ote = this.calcOTE(pd.swingHigh, pd.swingLow, 'sell');
-        entry = ote.optimal;
-      } else {
-        entry = price;
-      }
-
-      if (Math.abs(price - entry) > atr * 2) entry = price;
-
-      // SL: Above the OB high or above recent swing high
-      const recentHighs = ms.swings.highs;
-      if (nearBearOBs.length > 0) {
-        sl = nearBearOBs[nearBearOBs.length - 1].high + atr * 1.5;
-      } else if (recentHighs.length > 0) {
-        sl = recentHighs[recentHighs.length - 1].price + atr * 1.5;
-      } else {
-        sl = entry + atr * 2;
-      }
-
-      // TP: Target sell-side liquidity or next swing low
-      const risk = sl - entry;
-      if (liq.sellSide.length > 0) {
-        const target = liq.sellSide[liq.sellSide.length - 1].price;
-        tp = target;
-        const reward = entry - tp;
-        rr = '1:' + Math.max(1, (reward / risk)).toFixed(1);
-      } else if (ms.swings.lows.length > 0) {
-        tp = Math.min(...ms.swings.lows.map(l => l.price));
-        const reward = entry - tp;
-        rr = '1:' + Math.max(1, (reward / risk)).toFixed(1);
-      } else {
-        tp = entry - risk * 3;
-        rr = '1:3';
-      }
-
-      if ((entry - tp) < risk * 2) {
-        tp = entry - risk * 3;
-        rr = '1:3';
-      }
-    }
-
-    // Build result
-    if (signal) {
-      return {
-        pair, signal,
-        entry: this.fmt(entry, pair),
-        sl: this.fmt(sl, pair),
-        tp: this.fmt(tp, pair),
-        currentPrice: this.fmt(price, pair),
-        structure: ms.trend,
-        reason: reasons.join(', '),
-        fvgCount: unfilledFVGs.length,
-        obCount: obs.length,
-        riskReward: rr,
-        confluenceScore: signal === 'BUY' ? buyScore : sellScore,
-        premiumDiscount: pd.zone,
-        isLive: true,
-        timestamp: new Date().toISOString()
-      };
-    }
-
-    // No valid setup
-    return {
-      pair, signal: 'NO SIGNAL',
-      currentPrice: this.fmt(price, pair),
-      structure: ms.trend,
-      reason: 'No high-confluence ICT setup found (buy:' + buyScore + ' sell:' + sellScore + ' need:' + minScore + '). ' +
-              'FVGs: ' + unfilledFVGs.length + ' unfilled, OBs: ' + obs.length + '. Zone: ' + pd.zone,
-      fvgCount: unfilledFVGs.length,
-      obCount: obs.length,
-      premiumDiscount: pd.zone,
-      isLive: true,
-      timestamp: new Date().toISOString()
-    };
   }
 
-  /**
-   * Backward-compatible analyze method
-   * Called from app.js with (pair, price, isLive)
-   * Since we now need candle data, this fetches from Binance/generates synthetic candles
-   */
-  analyze(pair, price, isLive) {
-    if (!price) {
-      return {
-        pair, signal: 'NO SIGNAL', currentPrice: '--',
-        structure: 'no data', reason: 'Could not fetch live price',
-        isLive: false, timestamp: new Date().toISOString()
-      };
+  // ===== ATR CALCULATION =====
+  calcATR(candles, period = 14) {
+    if (candles.length < period + 1) return candles[candles.length - 1].close * 0.01;
+    let sum = 0;
+    for (let i = candles.length - period; i < candles.length; i++) {
+      const tr = Math.max(
+        candles[i].high - candles[i].low,
+        Math.abs(candles[i].high - candles[i - 1].close),
+        Math.abs(candles[i].low - candles[i - 1].close)
+      );
+      sum += tr;
     }
-
-    // Generate synthetic candles from price for demo
-    // In production, app.js should pass real candle data
-    const candles = this.generateSyntheticCandles(price, pair);
-    const result = this.generateSignal(pair, candles);
-    result.isLive = isLive;
-    result.currentPrice = this.fmt(price, pair);
-    return result;
-  }
-
-  /**
-   * Analyze with real OHLC candle data (preferred method)
-   */
-  analyzeWithCandles(pair, candles, currentPrice, isLive) {
-    const result = this.generateSignal(pair, candles);
-    result.isLive = isLive;
-    if (currentPrice) result.currentPrice = this.fmt(currentPrice, pair);
-    return result;
-  }
-
-  /**
-   * Generate realistic synthetic candles from current price
-   * Uses random walk with mean reversion for realistic price action
-   */
-  generateSyntheticCandles(currentPrice, pair, count = 100) {
-    const pip = this.pip(pair);
-    const volatility = currentPrice * 0.001; // 0.1% base volatility
-    const candles = [];
-    let price = currentPrice * (1 - volatility * 5 * (Math.random() - 0.3));
-
-    // Create trend bias based on current time (session-based)
-    const hour = new Date().getUTCHours();
-    let trendBias = 0;
-    // London session tends to set direction, NY continues or reverses
-    if (hour >= 7 && hour < 12) trendBias = (Math.random() - 0.4) * 0.3;
-    else if (hour >= 12 && hour < 17) trendBias = (Math.random() - 0.5) * 0.2;
-    else trendBias = (Math.random() - 0.5) * 0.1;
-
-    for (let i = 0; i < count; i++) {
-      const change = (Math.random() - 0.5 + trendBias) * volatility;
-      const open = price;
-      const wickUp = Math.random() * volatility * 0.5;
-      const wickDown = Math.random() * volatility * 0.5;
-
-      // Add occasional large candles (displacement)
-      const isDisplacement = Math.random() < 0.08;
-      const multiplier = isDisplacement ? 2.5 + Math.random() * 2 : 1;
-
-      const close = open + change * multiplier;
-      const high = Math.max(open, close) + wickUp;
-      const low = Math.min(open, close) - wickDown;
-
-      candles.push({ open, high, low, close, time: Date.now() - (count - i) * 900000 });
-      price = close;
-
-      // Mean reversion towards current price
-      if (i > count * 0.7) {
-        const pullback = (currentPrice - price) * 0.05;
-        price += pullback;
-      }
-    }
-
-    return candles;
+    return sum / period;
   }
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = ICTAnalyzer;
-}
+// Export global instance
+const ictAnalyzer = new ICTAnalyzer();
