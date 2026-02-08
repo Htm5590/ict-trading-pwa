@@ -2,22 +2,61 @@
 'use strict';
 const PAIRS={
 forex:[
-{symbol:'EUR/USD',tv:'FX:EURUSD',binance:null},
-{symbol:'GBP/USD',tv:'FX:GBPUSD',binance:null},
-{symbol:'USD/JPY',tv:'FX:USDJPY',binance:null},
-{symbol:'AUD/USD',tv:'FX:AUDUSD',binance:null},
-{symbol:'USD/CAD',tv:'FX:USDCAD',binance:null},
-{symbol:'XAU/USD',tv:'TVC:GOLD',binance:null}
+// Major pairs
+{symbol:'EUR/USD',tv:'FX:EURUSD'},
+{symbol:'GBP/USD',tv:'FX:GBPUSD'},
+{symbol:'USD/JPY',tv:'FX:USDJPY'},
+{symbol:'USD/CHF',tv:'FX:USDCHF'},
+{symbol:'AUD/USD',tv:'FX:AUDUSD'},
+{symbol:'USD/CAD',tv:'FX:USDCAD'},
+{symbol:'NZD/USD',tv:'FX:NZDUSD'},
+// Cross pairs
+{symbol:'EUR/GBP',tv:'FX:EURGBP'},
+{symbol:'EUR/JPY',tv:'FX:EURJPY'},
+{symbol:'GBP/JPY',tv:'FX:GBPJPY'},
+{symbol:'EUR/AUD',tv:'FX:EURAUD'},
+{symbol:'GBP/AUD',tv:'FX:GBPAUD'},
+{symbol:'EUR/CAD',tv:'FX:EURCAD'},
+{symbol:'GBP/CAD',tv:'FX:GBPCAD'},
+{symbol:'EUR/CHF',tv:'FX:EURCHF'},
+{symbol:'GBP/CHF',tv:'FX:GBPCHF'},
+{symbol:'AUD/JPY',tv:'FX:AUDJPY'},
+{symbol:'CAD/JPY',tv:'FX:CADJPY'},
+{symbol:'CHF/JPY',tv:'FX:CHFJPY'},
+{symbol:'NZD/JPY',tv:'FX:NZDJPY'},
+{symbol:'AUD/NZD',tv:'FX:AUDNZD'},
+{symbol:'AUD/CAD',tv:'FX:AUDCAD'},
+{symbol:'EUR/NZD',tv:'FX:EURNZD'},
+{symbol:'GBP/NZD',tv:'FX:GBPNZD'},
+// Exotics
+{symbol:'USD/MXN',tv:'FX:USDMXN'},
+{symbol:'USD/ZAR',tv:'FX:USDZAR'},
+{symbol:'USD/TRY',tv:'FX:USDTRY'},
+{symbol:'USD/SGD',tv:'FX:USDSGD'},
+// Metals
+{symbol:'XAU/USD',tv:'TVC:GOLD'},
+{symbol:'XAG/USD',tv:'TVC:SILVER'}
 ],
 indices:[
-{symbol:'US30',tv:'CAPITALCOM:US30',binance:null},
-{symbol:'US100',tv:'CAPITALCOM:US100',binance:null},
-{symbol:'US500',tv:'CAPITALCOM:US500',binance:null}
+{symbol:'US30',tv:'CAPITALCOM:US30'},
+{symbol:'US100',tv:'CAPITALCOM:US100'},
+{symbol:'US500',tv:'CAPITALCOM:US500'},
+{symbol:'DAX',tv:'CAPITALCOM:DE40'},
+{symbol:'FTSE',tv:'CAPITALCOM:UK100'},
+{symbol:'NI225',tv:'TVC:NI225'}
 ],
 crypto:[
-{symbol:'BTC/USD',tv:'COINBASE:BTCUSD',binance:'BTCUSDT'},
-{symbol:'ETH/USD',tv:'COINBASE:ETHUSD',binance:'ETHUSDT'},
-{symbol:'XRP/USD',tv:'COINBASE:XRPUSD',binance:'XRPUSDT'}
+{symbol:'BTC/USD',tv:'COINBASE:BTCUSD'},
+{symbol:'ETH/USD',tv:'COINBASE:ETHUSD'},
+{symbol:'XRP/USD',tv:'COINBASE:XRPUSD'},
+{symbol:'BNB/USD',tv:'BINANCE:BNBUSDT'},
+{symbol:'SOL/USD',tv:'COINBASE:SOLUSD'},
+{symbol:'ADA/USD',tv:'COINBASE:ADAUSD'},
+{symbol:'DOGE/USD',tv:'BINANCE:DOGEUSDT'},
+{symbol:'DOT/USD',tv:'COINBASE:DOTUSD'},
+{symbol:'AVAX/USD',tv:'COINBASE:AVAXUSD'},
+{symbol:'LINK/USD',tv:'COINBASE:LINKUSD'},
+{symbol:'LTC/USD',tv:'COINBASE:LTCUSD'}
 ]
 };
 let currentCategory='forex';
@@ -25,11 +64,12 @@ let currentSymbol=PAIRS.forex[0];
 let widget=null;
 
 function formatPrice(p,sym) {
-if(!p&&p!==0) return '--';
-if(sym.includes('JPY')) return p.toFixed(3);
-if(sym==='XAU/USD') return p.toFixed(2);
+if(p===null||p===undefined) return '--';
+if(sym.includes('JPY')||sym==='NI225') return p.toFixed(3);
+if(sym==='XAU/USD'||sym==='US30'||sym==='US100'||sym==='US500'||sym==='DAX'||sym==='FTSE') return p.toFixed(2);
 if(sym.includes('BTC')) return p.toFixed(1);
-if(['US30','US100','US500'].includes(sym)) return p.toFixed(1);
+if(sym.includes('ETH')||sym.includes('BNB')||sym.includes('SOL')) return p.toFixed(2);
+if(sym.includes('MXN')||sym.includes('ZAR')||sym.includes('TRY')||sym==='XAG/USD') return p.toFixed(4);
 return p.toFixed(5);
 }
 
@@ -39,7 +79,7 @@ if(!c) return;
 c.innerHTML='';
 try {
 widget=new TradingView.widget({
-autosize:true,symbol:sym.tv,interval:'15',timezone:'exchange',
+autosize:true,symbol:sym.tv,interval:'60',timezone:'exchange',
 theme:'dark',style:'1',locale:'en',toolbar_bg:'#111827',
 enable_publishing:false,allow_symbol_change:false,
 container_id:'tradingview_chart',
@@ -83,62 +123,42 @@ list.appendChild(btn);
 
 function clearSignals() {
 const c=document.getElementById('signals-container');
-if(c) c.innerHTML='<div class="signal-card"><div class="signal-header"><span>Select a pair and click Analyze</span></div><p style="color:#9ca3af;text-align:center;padding:20px;">ICT Smart Money analysis with Order Blocks, FVGs & Liquidity</p></div>';
+if(c) c.innerHTML='<div class="signal-card"><div class="signal-header"><span>Select a pair and click Analyze</span></div><p style="color:#9ca3af;text-align:center;padding:20px;">ICT Smart Money analysis with Order Blocks, FVGs, Liquidity & Structure</p></div>';
 }
 
-function saveToHistory(result) {
-if(!result||result.signal==='NEUTRAL') return;
-const history=JSON.parse(localStorage.getItem('ict_signal_history')||'[]');
-const signal={
-id:Date.now().toString(),
-timestamp:result.timestamp||new Date().toISOString(),
-pair:result.pair,
-signal:result.signal,
-entry:result.entry,
-tp1:result.tp1, tp2:result.tp2, tp3:result.tp3,
-sl:result.stopLoss,
-confidence:result.confidence,
-structure:result.structure,
-zone:result.zone,
-factors:result.factors,
-outcome:null
-};
-history.unshift(signal);
-if(history.length>100) history.pop();
-localStorage.setItem('ict_signal_history',JSON.stringify(history));
+function saveToHistory(r) {
+if(!r||r.signal==='NEUTRAL') return;
+const h=JSON.parse(localStorage.getItem('ict_signal_history')||'[]');
+h.unshift({id:Date.now().toString(),timestamp:r.timestamp,pair:r.pair,signal:r.signal,entry:r.entry,tp1:r.tp1,tp2:r.tp2,tp3:r.tp3,sl:r.stopLoss,confidence:r.confidence,structure:r.structure,zone:r.zone,rr:r.riskReward,factors:r.factors,outcome:null});
+if(h.length>100) h.pop();
+localStorage.setItem('ict_signal_history',JSON.stringify(h));
 updateHistoryBadge();
 }
 
 function updateHistoryBadge() {
-const history=JSON.parse(localStorage.getItem('ict_signal_history')||'[]');
-const pending=history.filter(s=>!s.outcome).length;
+const h=JSON.parse(localStorage.getItem('ict_signal_history')||'[]');
+const p=h.filter(s=>!s.outcome).length;
 const badge=document.getElementById('history-badge');
-const badgeTop=document.getElementById('history-count-top');
-if(badge) badge.textContent=pending>0?pending:'';
-if(badgeTop) badgeTop.textContent=pending>0?pending:'';
+const top=document.getElementById('history-count-top');
+if(badge) badge.textContent=p>0?p:'';
+if(top) top.textContent=p>0?p:'';
 }
 
 async function runAnalysis() {
 const btn=document.getElementById('analyze-btn');
-const container=document.getElementById('signals-container');
-if(!btn||!container) return;
-btn.disabled=true;
-btn.classList.add('loading');
-container.innerHTML='<div class="signal-card"><div class="loading-indicator"><div class="spinner"></div><p>Running ICT analysis...</p></div></div>';
-
+const c=document.getElementById('signals-container');
+if(!btn||!c) return;
+btn.disabled=true; btn.classList.add('loading');
+c.innerHTML='<div class="signal-card"><div class="loading-indicator"><div class="spinner"></div><p>Fetching real market data & running ICT analysis...</p></div></div>';
 try {
-await new Promise(r=>setTimeout(r,300));
+await new Promise(r=>setTimeout(r,200));
 const result=await ictAnalyzer.analyze(currentSymbol.symbol,currentCategory);
-if(result) {
-saveToHistory(result);
-renderSignal(result);
-}
+if(result) { saveToHistory(result); renderSignal(result); }
 } catch(err) {
 console.error('Analysis error:',err);
-container.innerHTML='<div class="signal-card"><p style="color:#ef4444;text-align:center;">Analysis error. Please try again.</p></div>';
+c.innerHTML='<div class="signal-card"><p style="color:#ef4444;text-align:center;">Analysis error. Please try again.</p></div>';
 }
-btn.disabled=false;
-btn.classList.remove('loading');
+btn.disabled=false; btn.classList.remove('loading');
 }
 
 function renderSignal(r) {
@@ -146,73 +166,66 @@ const c=document.getElementById('signals-container');
 if(!c) return;
 const sym=r.pair||currentSymbol.symbol;
 const fp=(v)=>formatPrice(v,sym);
+const ds=r.dataSource||'';
 
 if(r.signal==='NEUTRAL') {
 c.innerHTML=`<div class="signal-card">
 <div class="signal-header"><span class="pair-name">${sym}</span><span class="signal-badge neutral">NEUTRAL</span></div>
+${ds?`<div class="signal-row"><span>Data</span><span style="color:#60a5fa">${ds}</span></div>`:''}
 <div class="signal-row"><span>Structure</span><span>${r.structure||'--'}</span></div>
 <div class="signal-row"><span>Zone</span><span>${r.zone||'--'}</span></div>
 <div class="signal-row"><span>RSI</span><span>${r.rsi||'--'}</span></div>
 <div class="signal-row"><span>Session</span><span>${r.killzone?r.killzone.name:'--'}</span></div>
-<div class="signal-row"><span>Bull / Bear Score</span><span>${r.bullScore||0} / ${r.bearScore||0}</span></div>
-<p style="color:#9ca3af;text-align:center;margin-top:12px;">Insufficient confluence for a signal (need 5+ points)</p>
+<div class="signal-row"><span>Bull / Bear</span><span>${r.bullScore||0} / ${r.bearScore||0} of 20</span></div>
+<p style="color:#f59e0b;text-align:center;margin-top:12px;font-size:13px;">Insufficient confluence (need 7+ pts with 3+ margin)</p>
 <p style="color:#6b7280;text-align:center;font-size:11px;margin-top:8px;">Not financial advice.</p>
 </div>`;
 return;
 }
 
 const isBuy=r.signal==='BUY';
-const signalClass=isBuy?'buy':'sell';
-const arrow=isBuy?'\u2191':'\u2193';
-
-let factorsHtml='';
+const cls=isBuy?'buy':'sell';
+const arr=isBuy?'\u2191':'\u2193';
+let fHtml='';
 if(r.factors&&r.factors.length>0) {
-factorsHtml='<div class="factors-list" style="margin-top:10px;">';
+fHtml='<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px;">';
 r.factors.forEach(f=>{
-factorsHtml+=`<span class="factor-tag" style="display:inline-block;background:#1f2937;color:#d1d5db;padding:3px 8px;margin:2px;border-radius:4px;font-size:11px;">${f}</span>`;
+const col=f.includes('Bull')||f.includes('Discount')||f.includes('OTE Long')||f.includes('Oversold')?'#10b981':f.includes('Bear')||f.includes('Premium')||f.includes('OTE Short')||f.includes('Overbought')?'#ef4444':'#60a5fa';
+fHtml+=`<span style="display:inline-block;background:${col}22;color:${col};border:1px solid ${col}44;padding:2px 8px;border-radius:4px;font-size:11px;">${f}</span>`;
 });
-factorsHtml+='</div>';
+fHtml+='</div>';
 }
 
-c.innerHTML=`<div class="signal-card ${signalClass}">
-<div class="signal-header"><span class="pair-name">${sym}</span><span class="signal-badge ${signalClass}">${arrow} ${r.signal}</span></div>
-<div class="signal-row"><span>Confidence</span><span>${r.confidence}%</span></div>
+c.innerHTML=`<div class="signal-card ${cls}">
+<div class="signal-header"><span class="pair-name">${sym}</span><span class="signal-badge ${cls}">${arr} ${r.signal}</span></div>
+${ds?`<div class="signal-row"><span>Data Source</span><span style="color:#60a5fa">${ds}</span></div>`:''}
+<div class="signal-row"><span>Confidence</span><span style="font-weight:bold;color:${r.confidence>=60?'#10b981':r.confidence>=40?'#f59e0b':'#ef4444'}">${r.confidence}%</span></div>
 <div class="signal-row"><span>Entry</span><span>${fp(r.entry)}</span></div>
 <div class="signal-row"><span>Stop Loss</span><span style="color:#ef4444">${fp(r.stopLoss)}</span></div>
 <div class="signal-row"><span>TP 1</span><span style="color:#10b981">${fp(r.tp1)}</span></div>
 <div class="signal-row"><span>TP 2</span><span style="color:#10b981">${fp(r.tp2)}</span></div>
 <div class="signal-row"><span>TP 3</span><span style="color:#10b981">${fp(r.tp3)}</span></div>
+<div class="signal-row"><span>Risk : Reward</span><span style="font-weight:bold">1 : ${r.riskReward||'--'}</span></div>
 <div class="signal-row"><span>Structure</span><span>${r.structure||'--'}</span></div>
 <div class="signal-row"><span>Zone</span><span>${r.zone||'--'}</span></div>
-<div class="signal-row"><span>FVGs (Bull/Bear)</span><span>${r.fvgs?r.fvgs.bullish:0} / ${r.fvgs?r.fvgs.bearish:0}</span></div>
-<div class="signal-row"><span>Order Blocks</span><span>${r.orderBlocks?r.orderBlocks.bullish:0} / ${r.orderBlocks?r.orderBlocks.bearish:0}</span></div>
+<div class="signal-row"><span>FVGs (Near)</span><span>${r.fvgs?r.fvgs.bullish:0}B / ${r.fvgs?r.fvgs.bearish:0}S</span></div>
+<div class="signal-row"><span>Order Blocks</span><span>${r.orderBlocks?r.orderBlocks.bullish:0}B / ${r.orderBlocks?r.orderBlocks.bearish:0}S</span></div>
 <div class="signal-row"><span>RSI</span><span>${r.rsi||'--'}</span></div>
 <div class="signal-row"><span>Session</span><span>${r.killzone?r.killzone.name:'--'}</span></div>
-<div class="signal-row"><span>Score</span><span>${r.bullScore||0} Bull / ${r.bearScore||0} Bear</span></div>
-${factorsHtml}
+<div class="signal-row"><span>Score</span><span style="font-weight:bold">${r.bullScore||0} Bull / ${r.bearScore||0} Bear (of 20)</span></div>
+${fHtml}
 <p style="color:#6b7280;text-align:center;font-size:11px;margin-top:12px;">Not financial advice.</p>
 </div>`;
-
 const card=c.querySelector('.signal-card');
-if(card) { card.style.opacity='1'; card.style.transform='none'; }
+if(card){card.style.opacity='1';card.style.transform='none';}
 }
 
 function setupHamburger() {
-const hamburger=document.querySelector('.hamburger');
-const sidebar=document.querySelector('.sidebar');
-const overlay=document.querySelector('.sidebar-overlay');
-if(hamburger) {
-hamburger.addEventListener('click',()=>{
-if(sidebar) sidebar.classList.toggle('active');
-if(overlay) overlay.classList.toggle('active');
-});
-}
-if(overlay) {
-overlay.addEventListener('click',()=>{
-if(sidebar) sidebar.classList.remove('active');
-overlay.classList.remove('active');
-});
-}
+const h=document.querySelector('.hamburger');
+const s=document.querySelector('.sidebar');
+const o=document.querySelector('.sidebar-overlay');
+if(h) h.addEventListener('click',()=>{if(s)s.classList.toggle('active');if(o)o.classList.toggle('active');});
+if(o) o.addEventListener('click',()=>{if(s)s.classList.remove('active');o.classList.remove('active');});
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
